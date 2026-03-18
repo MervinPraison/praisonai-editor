@@ -10,8 +10,11 @@ from .models import EditPlan, EditResult, ProbeResult, TranscriptResult, Word
 from .probe import FFmpegProber
 from .convert import FFmpegConverter
 from .transcribe import OpenAITranscriber, LocalTranscriber
-from .plan import HeuristicEditor, get_preset_config
+from .plan import HeuristicEditor, get_preset_config, PRESETS
 from .render import FFmpegAudioRenderer, FFmpegVideoRenderer
+
+# Content-based presets that use detect.py
+CONTENT_PRESETS = {"songs_only", "speech_only", "no_silence"}
 
 # Audio-only extensions
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".wma", ".opus"}
@@ -56,6 +59,7 @@ def edit_media(
     remove_silence: bool = True,
     min_silence: float = 1.5,
     use_local_whisper: bool = False,
+    language: Optional[str] = None,
     copy_codec: bool = True,
     verbose: bool = False,
     save_artifacts: bool = True,
@@ -65,12 +69,13 @@ def edit_media(
     Args:
         input_path: Path to input media file (MP3, MP4, etc.)
         output_path: Path for output (default: {input}_edited.{ext})
-        preset: Edit preset (podcast, meeting, course, clean)
+        preset: Edit preset (podcast, meeting, course, clean, songs_only, speech_only, no_silence)
         remove_fillers: Remove filler words
         remove_repetitions: Remove repeated words
         remove_silence: Remove long silences
         min_silence: Minimum silence duration to remove
         use_local_whisper: Use local faster-whisper instead of OpenAI API
+        language: Language code for transcription (e.g., 'ta' for Tamil)
         copy_codec: Copy codecs (faster) vs re-encode
         verbose: Print progress
         save_artifacts: Save transcript, plan, etc. as files
@@ -93,6 +98,7 @@ def edit_media(
             remove_silence=remove_silence,
             min_silence=min_silence,
             use_local_whisper=use_local_whisper,
+            language=language,
             copy_codec=copy_codec,
             verbose=verbose,
             save_artifacts=save_artifacts,
@@ -106,6 +112,7 @@ def edit_media(
             remove_silence=remove_silence,
             min_silence=min_silence,
             use_local_whisper=use_local_whisper,
+            language=language,
             copy_codec=copy_codec,
             verbose=verbose,
             save_artifacts=save_artifacts,
@@ -122,6 +129,7 @@ def edit_audio(
     remove_silence: bool = True,
     min_silence: float = 1.5,
     use_local_whisper: bool = False,
+    language: Optional[str] = None,
     copy_codec: bool = True,
     verbose: bool = False,
     save_artifacts: bool = True,
@@ -131,7 +139,8 @@ def edit_audio(
     Args:
         input_path: Path to audio file (MP3, WAV, etc.)
         output_path: Path for output audio
-        preset: Edit preset name
+        preset: Edit preset name (podcast/meeting/course/clean/songs_only/speech_only/no_silence)
+        language: Language code for transcription (e.g. 'ta' for Tamil)
         Other args: see edit_media()
 
     Returns:
@@ -149,13 +158,17 @@ def edit_audio(
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     artifacts: Dict[str, str] = {}
 
-    # Apply preset
-    config = get_preset_config(preset)
-    if config:
-        remove_fillers = config.get("remove_fillers", remove_fillers)
-        remove_repetitions = config.get("remove_repetitions", remove_repetitions)
-        remove_silence = config.get("remove_silence", remove_silence)
-        min_silence = config.get("min_silence", min_silence)
+    # Determine if this is a content-based preset
+    use_content_detection = preset in CONTENT_PRESETS
+
+    # Apply heuristic preset config (only for non-content presets)
+    if not use_content_detection:
+        config = get_preset_config(preset)
+        if config:
+            remove_fillers = config.get("remove_fillers", remove_fillers)
+            remove_repetitions = config.get("remove_repetitions", remove_repetitions)
+            remove_silence = config.get("remove_silence", remove_silence)
+            min_silence = config.get("min_silence", min_silence)
 
     probe = None
     transcript = None
@@ -183,7 +196,7 @@ def edit_audio(
                 transcriber = LocalTranscriber()
             else:
                 transcriber = OpenAITranscriber()
-            transcript = transcriber.transcribe(input_path)
+            transcript = transcriber.transcribe(input_path, language=language)
         else:
             if verbose:
                 print("[2/3] Transcript loaded from cache", flush=True)
@@ -207,14 +220,30 @@ def edit_audio(
         # Step 3: Plan + Render
         if verbose:
             print("[3/3] Creating edit plan and rendering...", flush=True)
-        editor = HeuristicEditor()
-        plan = editor.create_plan(
-            transcript, probe.duration,
-            remove_fillers=remove_fillers,
-            remove_repetitions=remove_repetitions,
-            remove_silence=remove_silence,
-            min_silence=min_silence,
-        )
+
+        if use_content_detection:
+            # Content-based editing (songs_only, speech_only, no_silence)
+            from .detect import create_content_plan
+            keep_map = {
+                "songs_only": ["music"],
+                "speech_only": ["speech"],
+                "no_silence": ["speech", "music"],
+            }
+            plan = create_content_plan(
+                input_path, transcript, probe.duration,
+                keep_types=keep_map[preset],
+                verbose=verbose,
+            )
+        else:
+            # Heuristic editing (podcast, meeting, course, clean)
+            editor = HeuristicEditor()
+            plan = editor.create_plan(
+                transcript, probe.duration,
+                remove_fillers=remove_fillers,
+                remove_repetitions=remove_repetitions,
+                remove_silence=remove_silence,
+                min_silence=min_silence,
+            )
 
         if save_artifacts:
             plan_path = artifacts_dir / "plan.json"
@@ -269,21 +298,12 @@ def edit_video(
     remove_silence: bool = True,
     min_silence: float = 1.5,
     use_local_whisper: bool = False,
+    language: Optional[str] = None,
     copy_codec: bool = True,
     verbose: bool = False,
     save_artifacts: bool = True,
 ) -> EditResult:
-    """Edit a video file: transcribe audio → plan → render video.
-
-    Args:
-        input_path: Path to video file (MP4, MOV, etc.)
-        output_path: Path for output video
-        preset: Edit preset name
-        Other args: see edit_media()
-
-    Returns:
-        EditResult
-    """
+    """Edit a video file: transcribe audio → plan → render video."""
     input_file = Path(input_path)
     if not input_file.exists():
         raise FileNotFoundError(f"Input file not found: {input_path}")
@@ -296,12 +316,15 @@ def edit_video(
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     artifacts: Dict[str, str] = {}
 
-    config = get_preset_config(preset)
-    if config:
-        remove_fillers = config.get("remove_fillers", remove_fillers)
-        remove_repetitions = config.get("remove_repetitions", remove_repetitions)
-        remove_silence = config.get("remove_silence", remove_silence)
-        min_silence = config.get("min_silence", min_silence)
+    use_content_detection = preset in CONTENT_PRESETS
+
+    if not use_content_detection:
+        config = get_preset_config(preset)
+        if config:
+            remove_fillers = config.get("remove_fillers", remove_fillers)
+            remove_repetitions = config.get("remove_repetitions", remove_repetitions)
+            remove_silence = config.get("remove_silence", remove_silence)
+            min_silence = config.get("min_silence", min_silence)
 
     probe = None
     transcript = None
@@ -329,7 +352,7 @@ def edit_video(
                 transcriber = LocalTranscriber()
             else:
                 transcriber = OpenAITranscriber()
-            transcript = transcriber.transcribe(input_path)
+            transcript = transcriber.transcribe(input_path, language=language)
         else:
             if verbose:
                 print("[2/4] Transcript loaded from cache", flush=True)
@@ -353,14 +376,28 @@ def edit_video(
         # Step 3: Plan
         if verbose:
             print("[3/4] Creating edit plan...", flush=True)
-        editor = HeuristicEditor()
-        plan = editor.create_plan(
-            transcript, probe.duration,
-            remove_fillers=remove_fillers,
-            remove_repetitions=remove_repetitions,
-            remove_silence=remove_silence,
-            min_silence=min_silence,
-        )
+
+        if use_content_detection:
+            from .detect import create_content_plan
+            keep_map = {
+                "songs_only": ["music"],
+                "speech_only": ["speech"],
+                "no_silence": ["speech", "music"],
+            }
+            plan = create_content_plan(
+                input_path, transcript, probe.duration,
+                keep_types=keep_map[preset],
+                verbose=verbose,
+            )
+        else:
+            editor = HeuristicEditor()
+            plan = editor.create_plan(
+                transcript, probe.duration,
+                remove_fillers=remove_fillers,
+                remove_repetitions=remove_repetitions,
+                remove_silence=remove_silence,
+                min_silence=min_silence,
+            )
 
         if save_artifacts:
             plan_path = artifacts_dir / "plan.json"

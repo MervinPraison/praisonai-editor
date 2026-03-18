@@ -56,12 +56,14 @@ def main():
     edit_parser.add_argument("input", help="Input media file")
     edit_parser.add_argument("--output", "-o", help="Output file")
     edit_parser.add_argument("--preset", "-p", default="podcast",
-                             choices=["podcast", "meeting", "course", "clean"])
+                             choices=["podcast", "meeting", "course", "clean",
+                                      "songs_only", "speech_only", "no_silence"])
     edit_parser.add_argument("--prompt", help="Natural language editing instructions (uses AI agent)")
     edit_parser.add_argument("--no-fillers", action="store_true", help="Keep filler words")
     edit_parser.add_argument("--no-repetitions", action="store_true", help="Keep repetitions")
     edit_parser.add_argument("--no-silence", action="store_true", help="Keep silences")
     edit_parser.add_argument("--local", action="store_true", help="Use local whisper")
+    edit_parser.add_argument("--language", help="Language code for transcription (e.g. ta, en, es)")
     edit_parser.add_argument("--reencode", action="store_true", help="Re-encode instead of copy")
     edit_parser.add_argument("--verbose", "-v", action="store_true")
     edit_parser.add_argument("--no-artifacts", action="store_true", help="Don't save artifacts")
@@ -211,6 +213,7 @@ def cmd_edit(args):
             remove_repetitions=not args.no_repetitions,
             remove_silence=not args.no_silence,
             use_local_whisper=args.local,
+            language=args.language,
             copy_codec=not args.reencode,
             verbose=args.verbose,
             save_artifacts=not args.no_artifacts,
