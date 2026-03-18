@@ -76,13 +76,17 @@ def _has_librosa() -> bool:
 
 
 def _resolve_detector(detector: str) -> str:
-    """Resolve 'auto' to the best available detector."""
+    """Resolve 'auto' to the best available detector.
+
+    Priority: librosa (most reliable) → ina (optional, Keras 3 compat issues) → ffmpeg
+    """
     if detector != "auto":
         return detector
-    if _has_ina():
-        return "ina"
+    # librosa is the most reliable — core dependency, no Keras/TF issues
     if _has_librosa():
         return "librosa"
+    if _has_ina():
+        return "ina"
     return "ffmpeg"
 
 
@@ -131,6 +135,32 @@ def _classify_ina(
     This is the most accurate backend — classifies the entire audio
     in a single pass using a trained CNN model.
     """
+    # Compatibility shims for NumPy 2.x:
+    # 1. inaSpeechSegmenter uses numpy.lib.pad (removed in NumPy 2.0+)
+    import numpy
+    if not hasattr(numpy.lib, 'pad'):
+        numpy.lib.pad = numpy.pad
+
+    # 2. pyannote.algorithms passes generators to np.vstack (needs list)
+    try:
+        import pyannote.algorithms.utils.viterbi as _viterbi
+        import six.moves
+        _orig_update_emission = _viterbi._update_emission
+        def _patched_update_emission(emission, consecutive):
+            return numpy.vstack([
+                numpy.tile(e, (c, 1))
+                for e, c in six.moves.zip(emission.T, consecutive)
+            ]).T
+        def _patched_update_constraint(constraint, consecutive):
+            return numpy.vstack([
+                numpy.tile(e, (c, 1))
+                for e, c in six.moves.zip(constraint.T, consecutive)
+            ]).T
+        _viterbi._update_emission = _patched_update_emission
+        _viterbi._update_constraint = _patched_update_constraint
+    except ImportError:
+        pass
+
     from inaSpeechSegmenter import Segmenter  # lazy import
 
     if verbose:

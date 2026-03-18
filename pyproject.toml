@@ -1,6 +1,6 @@
 [project]
 name = "praisonai-editor"
-version = "0.1.1"
+version = "0.1.2"
 description = "Protocol-driven audio & video editor for PraisonAI — transcribe, clean, and edit media with AI"
 authors = [
     {name = "Mervin Praison"}
@@ -24,6 +24,7 @@ classifiers = [
 dependencies = [
     "openai>=2.0.0",
     "praisonaiagents>=0.0.1",
+    "librosa>=0.10.0",
 ]
 
 [project.scripts]
@@ -43,14 +44,9 @@ dev = [
 detect = [
     "inaSpeechSegmenter>=0.7.0",
 ]
-detect-lite = [
-    "librosa>=0.10.0",
-    "numpy>=1.23.0",
-]
 all = [
     "praisonai-editor[local]",
     "praisonai-editor[tools]",
-    "praisonai-editor[detect-lite]",
 ]
 
 [project.entry-points."praisonaiagents.tools"]
