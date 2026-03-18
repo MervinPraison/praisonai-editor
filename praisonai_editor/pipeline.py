@@ -236,7 +236,10 @@ def edit_audio(
             if save_artifacts:
                 blocks_data = [
                     {"start": b.start, "end": b.end, "duration": b.duration,
-                     "type": b.content_type, "mean_volume_db": round(b.mean_volume, 1)}
+                     "type": b.content_type, "rms_db": round(b.mean_volume, 1),
+                     "crest_factor": round(b.crest_factor, 1),
+                     "dynamic_range": round(b.dynamic_range, 1),
+                     "zero_crossing_rate": round(b.zero_crossing_rate, 4)}
                     for b in blocks
                 ]
                 blocks_path = artifacts_dir / "content_blocks.json"
@@ -401,7 +404,10 @@ def edit_video(
             if save_artifacts:
                 blocks_data = [
                     {"start": b.start, "end": b.end, "duration": b.duration,
-                     "type": b.content_type, "mean_volume_db": round(b.mean_volume, 1)}
+                     "type": b.content_type, "rms_db": round(b.mean_volume, 1),
+                     "crest_factor": round(b.crest_factor, 1),
+                     "dynamic_range": round(b.dynamic_range, 1),
+                     "zero_crossing_rate": round(b.zero_crossing_rate, 4)}
                     for b in blocks
                 ]
                 blocks_path = artifacts_dir / "content_blocks.json"

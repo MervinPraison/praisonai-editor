@@ -24,7 +24,10 @@ class ContentBlock:
     start: float
     end: float
     content_type: str  # "speech", "music", "silence"
-    mean_volume: float = 0.0  # dB
+    mean_volume: float = 0.0  # RMS dB
+    crest_factor: float = 0.0  # Peak/RMS ratio — lower = more compressed (music)
+    dynamic_range: float = 0.0  # dB range — music has moderate, speech has high
+    zero_crossing_rate: float = 0.0  # Higher = more noise/speech fricatives
 
     @property
     def duration(self) -> float:
@@ -42,16 +45,28 @@ def _find_ffmpeg() -> str:
     raise FileNotFoundError("ffmpeg not found")
 
 
-def _measure_volume(media_path: str, start: float, duration: float) -> float:
-    """Measure mean volume (dB) for a segment of audio using FFmpeg.
+@dataclass
+class AudioMetrics:
+    """Multi-metric audio analysis result from FFmpeg astats."""
+    rms_level: float = -100.0  # RMS level in dB (avg loudness)
+    peak_level: float = -100.0  # Peak level in dB
+    crest_factor: float = 0.0  # Peak/RMS — lower = more compressed (music-like)
+    dynamic_range: float = 0.0  # dB — difference between loud and quiet
+    zero_crossing_rate: float = 0.0  # Crossings/sec — higher = noisier/speech
 
-    Returns mean_volume in dB. Typical values:
-    - Silence: < -50 dB
-    - Music: -30 to -10 dB
-    - Speech: -25 to -10 dB
+
+def _analyze_audio(media_path: str, start: float, duration: float) -> AudioMetrics:
+    """Analyze audio segment using FFmpeg astats for multiple metrics.
+
+    Returns AudioMetrics with:
+    - rms_level: Average loudness (silence < -50dB, music/speech -30 to -10dB)
+    - crest_factor: Peak/RMS ratio. Music is more compressed (lower crest ~5-15),
+                    speech is more dynamic (higher crest ~10-25)
+    - dynamic_range: dB range. Silence ~0, speech high, music moderate
+    - zero_crossing_rate: Higher for noise/speech fricatives, lower for tonal music
     """
     if duration < 0.1:
-        return -100.0
+        return AudioMetrics()
 
     ffmpeg = _find_ffmpeg()
     cmd = [
@@ -59,23 +74,98 @@ def _measure_volume(media_path: str, start: float, duration: float) -> float:
         "-ss", str(start),
         "-t", str(duration),
         "-i", media_path,
-        "-af", "volumedetect",
+        "-af", "astats",
         "-f", "null",
         "-",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     stderr = result.stderr
 
-    # Parse mean_volume from FFmpeg output
+    metrics = AudioMetrics()
+
+    # Parse astats text output: [Parsed_astats_0 @ addr] Key: value
+    # We want the LAST occurrence of each key (Overall channel stats)
     for line in stderr.split("\n"):
-        if "mean_volume:" in line:
+        if "astats" not in line:
+            continue
+        if "RMS level dB:" in line:
             try:
-                vol = float(line.split("mean_volume:")[1].strip().split()[0])
-                return vol
-            except (ValueError, IndexError):
+                val = line.split("RMS level dB:")[-1].strip()
+                if val != "-inf":
+                    metrics.rms_level = float(val)
+            except ValueError:
+                pass
+        elif "Peak level dB:" in line:
+            try:
+                val = line.split("Peak level dB:")[-1].strip()
+                if val != "-inf":
+                    metrics.peak_level = float(val)
+            except ValueError:
+                pass
+        elif "Crest factor:" in line:
+            try:
+                val = line.split("Crest factor:")[-1].strip()
+                if val != "-inf" and val != "inf":
+                    metrics.crest_factor = float(val)
+            except ValueError:
+                pass
+        elif "Dynamic range:" in line:
+            try:
+                val = line.split("Dynamic range:")[-1].strip()
+                if val != "-inf" and val != "inf":
+                    metrics.dynamic_range = float(val)
+            except ValueError:
+                pass
+        elif "Zero crossings rate:" in line:
+            try:
+                val = line.split("Zero crossings rate:")[-1].strip()
+                metrics.zero_crossing_rate = float(val)
+            except ValueError:
                 pass
 
-    return -100.0
+    return metrics
+
+
+def _classify_by_metrics(metrics: AudioMetrics, silence_threshold: float = -45.0) -> str:
+    """Classify audio type using multiple metrics.
+
+    Decision logic:
+    - Silence: very low RMS level
+    - Music: moderate-high RMS, lower crest factor (compressed), lower ZCR
+    - Speech: moderate RMS, higher crest factor (dynamic), higher ZCR
+    """
+    # Clear silence
+    if metrics.rms_level < silence_threshold:
+        return "silence"
+
+    # Score-based classification
+    music_score = 0.0
+
+    # Music tends to have lower crest factor (more compressed/consistent energy)
+    if metrics.crest_factor > 0:
+        if metrics.crest_factor < 10:
+            music_score += 3.0  # Very compressed — likely music
+        elif metrics.crest_factor < 15:
+            music_score += 1.5  # Moderately compressed
+        else:
+            music_score -= 1.0  # Very dynamic — likely speech
+
+    # Music tends to have lower zero crossing rate (tonal content)
+    if metrics.zero_crossing_rate > 0:
+        if metrics.zero_crossing_rate < 0.05:
+            music_score += 2.0  # Low ZCR — tonal/musical
+        elif metrics.zero_crossing_rate < 0.1:
+            music_score += 0.5  # Moderate
+        else:
+            music_score -= 1.0  # High ZCR — speech/noise
+
+    # Higher RMS = more likely content (both music and speech)
+    if metrics.rms_level > -25:
+        music_score += 1.0  # Loud content
+    elif metrics.rms_level > -35:
+        music_score += 0.5
+
+    return "music" if music_score >= 2.0 else "speech"
 
 
 def _group_speech_blocks(
@@ -235,19 +325,24 @@ def classify_content(
             gap_end = speech.start
             gap_duration = gap_end - gap_start
 
-            # Measure volume in this gap
-            vol = _measure_volume(media_path, gap_start, gap_duration)
+            # Analyze audio in this gap with multiple metrics
+            metrics = _analyze_audio(media_path, gap_start, gap_duration)
+            content_type = _classify_by_metrics(metrics, silence_threshold)
 
-            content_type = "music" if vol > silence_threshold else "silence"
             all_blocks.append(ContentBlock(
                 start=gap_start,
                 end=gap_end,
                 content_type=content_type,
-                mean_volume=vol,
+                mean_volume=metrics.rms_level,
+                crest_factor=metrics.crest_factor,
+                dynamic_range=metrics.dynamic_range,
+                zero_crossing_rate=metrics.zero_crossing_rate,
             ))
 
             if verbose:
-                print(f"    Gap {gap_start:.1f}-{gap_end:.1f}s: {content_type} ({vol:.1f}dB)", flush=True)
+                print(f"    Gap {gap_start:.1f}-{gap_end:.1f}s: {content_type} "
+                      f"(RMS:{metrics.rms_level:.1f}dB CF:{metrics.crest_factor:.1f} "
+                      f"ZCR:{metrics.zero_crossing_rate:.3f})", flush=True)
 
         elif speech.start > current_time:
             # Small gap — classify as transition
@@ -264,16 +359,21 @@ def classify_content(
 
     # Handle gap after last speech block
     if current_time < duration - min_block:
-        vol = _measure_volume(media_path, current_time, duration - current_time)
-        content_type = "music" if vol > silence_threshold else "silence"
+        metrics = _analyze_audio(media_path, current_time, duration - current_time)
+        content_type = _classify_by_metrics(metrics, silence_threshold)
         all_blocks.append(ContentBlock(
             start=current_time,
             end=duration,
             content_type=content_type,
-            mean_volume=vol,
+            mean_volume=metrics.rms_level,
+            crest_factor=metrics.crest_factor,
+            dynamic_range=metrics.dynamic_range,
+            zero_crossing_rate=metrics.zero_crossing_rate,
         ))
         if verbose:
-            print(f"    Gap {current_time:.1f}-{duration:.1f}s: {content_type} ({vol:.1f}dB)", flush=True)
+            print(f"    Gap {current_time:.1f}-{duration:.1f}s: {content_type} "
+                  f"(RMS:{metrics.rms_level:.1f}dB CF:{metrics.crest_factor:.1f} "
+                  f"ZCR:{metrics.zero_crossing_rate:.3f})", flush=True)
     elif current_time < duration:
         all_blocks.append(ContentBlock(
             start=current_time,
