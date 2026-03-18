@@ -1,0 +1,66 @@
+[project]
+name = "praisonai-editor"
+version = "0.1.0"
+description = "Protocol-driven audio & video editor for PraisonAI — transcribe, clean, and edit media with AI"
+authors = [
+    {name = "Mervin Praison"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["ai", "audio", "video", "editor", "transcribe", "whisper", "praisonai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "openai>=2.0.0",
+    "praisonaiagents>=0.0.1",
+]
+
+[project.scripts]
+praisonai-editor = "praisonai_editor.cli:main"
+
+[project.optional-dependencies]
+local = [
+    "faster-whisper>=1.0.0",
+]
+tools = [
+    "praisonai-tools>=0.1.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+all = [
+    "praisonai-editor[local]",
+    "praisonai-editor[tools]",
+]
+
+[project.entry-points."praisonaiagents.tools"]
+audio_editor = "praisonai_editor.agent_tool:AudioEditorTool"
+audio_transcribe = "praisonai_editor.agent_tool:AudioTranscribeTool"
+mp4_to_mp3 = "praisonai_editor.agent_tool:MP4ToMP3Tool"
+
+[project.urls]
+Homepage = "https://docs.praison.ai"
+Repository = "https://github.com/MervinPraison/praisonai-editor"
+Documentation = "https://docs.praison.ai/editor"
+
+[build-system]
+requires = ["hatchling>=1.0.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["praisonai_editor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
