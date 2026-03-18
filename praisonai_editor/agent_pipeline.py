@@ -47,7 +47,7 @@ def prompt_edit(
     from .probe import FFmpegProber
     from .transcribe import OpenAITranscriber, LocalTranscriber
     from .render import FFmpegAudioRenderer, FFmpegVideoRenderer
-    from .pipeline import VIDEO_EXTENSIONS
+    from .pipeline import VIDEO_EXTENSIONS, _load_cached_transcript
     from .models import EditPlan, Segment
 
     input_file = Path(input_path)
@@ -60,20 +60,35 @@ def prompt_edit(
     if output_path is None:
         output_path = str(input_file.parent / f"{input_file.stem}_edited{input_file.suffix}")
 
+    # Set up artifacts directory for caching
+    output_file = Path(output_path)
+    artifacts_dir = output_file.parent / f".praisonai/{input_file.stem}"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
     # Step 1: Probe
     if verbose:
-        print(f"[1/4] Probing: {input_path}")
+        print(f"[1/4] Probing: {input_path}", flush=True)
     prober = FFmpegProber()
     probe = prober.probe(input_path)
 
-    # Step 2: Transcribe
-    if verbose:
-        print(f"[2/4] Transcribing ({probe.duration:.1f}s)...")
-    if use_local_whisper:
-        transcriber = LocalTranscriber()
+    # Step 2: Transcribe (use cache if available)
+    transcript = _load_cached_transcript(artifacts_dir, verbose)
+    if transcript is None:
+        if verbose:
+            print(f"[2/4] Transcribing ({probe.duration:.1f}s)...", flush=True)
+        if use_local_whisper:
+            transcriber = LocalTranscriber()
+        else:
+            transcriber = OpenAITranscriber()
+        transcript = transcriber.transcribe(input_path)
+
+        # Save transcript for future cache
+        json_path = artifacts_dir / "transcript.json"
+        with open(json_path, "w") as f:
+            json.dump(transcript.to_dict(), f, indent=2)
     else:
-        transcriber = OpenAITranscriber()
-    transcript = transcriber.transcribe(input_path)
+        if verbose:
+            print("[2/4] Transcript loaded from cache", flush=True)
 
     # Step 3: Use Agent to create edit plan from prompt
     if verbose:
@@ -108,7 +123,6 @@ Rules:
 - Segments must not overlap and must be in chronological order
 - Be conservative: only remove what the user asked to remove
 """,
-        verbose=verbose,
     )
 
     try:
