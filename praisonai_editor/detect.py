@@ -115,6 +115,75 @@ def _group_speech_blocks(
     return blocks
 
 
+def _merge_music_blocks(
+    blocks: List[ContentBlock],
+    max_speech_bridge: float = 30.0,
+    max_silence_bridge: float = 5.0,
+    verbose: bool = False,
+) -> List[ContentBlock]:
+    """Merge adjacent music blocks separated by short speech or silence gaps.
+
+    Songs run for minutes — Whisper may detect a few words in lyrics,
+    creating tiny speech blocks that fragment the music. This step
+    consolidates them.
+
+    Rules:
+    - If two music blocks are separated by speech < max_speech_bridge seconds,
+      absorb the speech into the music (Whisper detected lyrics).
+    - If two music blocks are separated by silence < max_silence_bridge seconds,
+      absorb the silence (instrumental pause).
+
+    Args:
+        blocks: Raw classified blocks
+        max_speech_bridge: Max speech duration (s) between music blocks to merge (default: 30s)
+        max_silence_bridge: Max silence duration (s) between music blocks to merge (default: 5s)
+        verbose: Print merge info
+    """
+    if len(blocks) < 3:
+        return blocks
+
+    merged = [blocks[0]]
+
+    i = 1
+    while i < len(blocks):
+        prev = merged[-1]
+        curr = blocks[i]
+
+        # Check if we can merge: music - [short gap] - music
+        if (prev.content_type == "music"
+            and i + 1 < len(blocks)
+            and blocks[i + 1].content_type == "music"):
+
+            gap = curr  # The block between two music blocks
+            bridge_ok = False
+
+            if gap.content_type == "speech" and gap.duration <= max_speech_bridge:
+                bridge_ok = True  # Whisper probably picked up lyrics
+            elif gap.content_type == "silence" and gap.duration <= max_silence_bridge:
+                bridge_ok = True  # Short instrumental pause
+
+            if bridge_ok:
+                # Merge: extend prev music to cover gap + next music
+                next_music = blocks[i + 1]
+                avg_vol = (prev.mean_volume + next_music.mean_volume) / 2
+                merged[-1] = ContentBlock(
+                    start=prev.start,
+                    end=next_music.end,
+                    content_type="music",
+                    mean_volume=avg_vol,
+                )
+                if verbose:
+                    print(f"    Merged music: {prev.start:.1f}-{next_music.end:.1f}s "
+                          f"(bridged {gap.duration:.1f}s {gap.content_type})", flush=True)
+                i += 2  # Skip gap + next music (absorbed)
+                continue
+
+        merged.append(curr)
+        i += 1
+
+    return merged
+
+
 def classify_content(
     media_path: str,
     transcript: TranscriptResult,
@@ -123,6 +192,8 @@ def classify_content(
     speech_gap: float = 2.0,
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
+    max_speech_bridge: float = 30.0,
+    max_silence_bridge: float = 5.0,
     verbose: bool = False,
 ) -> List[ContentBlock]:
     """Classify audio content into speech, music, and silence blocks.
@@ -131,6 +202,7 @@ def classify_content(
     1. Group transcript words into speech blocks (gaps > speech_gap = new block)
     2. For each non-speech gap, measure audio energy via FFmpeg
     3. High energy gaps = music, low energy gaps = silence
+    4. Merge adjacent music blocks separated by short speech/silence (songs run for minutes)
 
     Args:
         media_path: Path to media file
@@ -139,6 +211,8 @@ def classify_content(
         speech_gap: Max gap (s) between words to be same speech block
         silence_threshold: Volume (dB) below which = silence (default: -45dB)
         min_block: Minimum block duration to analyze
+        max_speech_bridge: Max speech gap (s) between music blocks to merge (lyrics)
+        max_silence_bridge: Max silence gap (s) between music blocks to merge
         verbose: Print progress
 
     Returns:
@@ -207,6 +281,17 @@ def classify_content(
             content_type="silence",
             mean_volume=-100.0,
         ))
+
+    # Step 3: Merge fragmented music blocks (songs run for minutes, not seconds)
+    raw_count = len(all_blocks)
+    all_blocks = _merge_music_blocks(
+        all_blocks,
+        max_speech_bridge=max_speech_bridge,
+        max_silence_bridge=max_silence_bridge,
+        verbose=verbose,
+    )
+    if verbose and len(all_blocks) < raw_count:
+        print(f"    Merged: {raw_count} → {len(all_blocks)} blocks", flush=True)
 
     return all_blocks
 
