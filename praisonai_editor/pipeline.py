@@ -54,6 +54,7 @@ def edit_media(
     output_path: Optional[str] = None,
     *,
     preset: str = "podcast",
+    detector: str = "auto",
     remove_fillers: bool = True,
     remove_repetitions: bool = True,
     remove_silence: bool = True,
@@ -93,6 +94,7 @@ def edit_media(
         return edit_video(
             input_path, output_path,
             preset=preset,
+            detector=detector,
             remove_fillers=remove_fillers,
             remove_repetitions=remove_repetitions,
             remove_silence=remove_silence,
@@ -107,6 +109,7 @@ def edit_media(
         return edit_audio(
             input_path, output_path,
             preset=preset,
+            detector=detector,
             remove_fillers=remove_fillers,
             remove_repetitions=remove_repetitions,
             remove_silence=remove_silence,
@@ -124,6 +127,7 @@ def edit_audio(
     output_path: Optional[str] = None,
     *,
     preset: str = "podcast",
+    detector: str = "auto",
     remove_fillers: bool = True,
     remove_repetitions: bool = True,
     remove_silence: bool = True,
@@ -230,6 +234,7 @@ def edit_audio(
             plan, blocks = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
+                detector=detector,
                 verbose=verbose,
             )
             # Save content detection results
@@ -239,7 +244,8 @@ def edit_audio(
                      "type": b.content_type, "rms_db": round(b.mean_volume, 1),
                      "crest_factor": round(b.crest_factor, 1),
                      "dynamic_range": round(b.dynamic_range, 1),
-                     "zero_crossing_rate": round(b.zero_crossing_rate, 4)}
+                     "zero_crossing_rate": round(b.zero_crossing_rate, 4),
+                     "confidence": round(b.confidence, 2)}
                     for b in blocks
                 ]
                 blocks_path = artifacts_dir / "content_blocks.json"
@@ -305,6 +311,7 @@ def edit_video(
     output_path: Optional[str] = None,
     *,
     preset: str = "podcast",
+    detector: str = "auto",
     remove_fillers: bool = True,
     remove_repetitions: bool = True,
     remove_silence: bool = True,
@@ -399,6 +406,7 @@ def edit_video(
             plan, blocks = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
+                detector=detector,
                 verbose=verbose,
             )
             if save_artifacts:
@@ -407,7 +415,8 @@ def edit_video(
                      "type": b.content_type, "rms_db": round(b.mean_volume, 1),
                      "crest_factor": round(b.crest_factor, 1),
                      "dynamic_range": round(b.dynamic_range, 1),
-                     "zero_crossing_rate": round(b.zero_crossing_rate, 4)}
+                     "zero_crossing_rate": round(b.zero_crossing_rate, 4),
+                     "confidence": round(b.confidence, 2)}
                     for b in blocks
                 ]
                 blocks_path = artifacts_dir / "content_blocks.json"

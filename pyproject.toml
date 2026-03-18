@@ -40,9 +40,17 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+detect = [
+    "inaSpeechSegmenter>=0.7.0",
+]
+detect-lite = [
+    "librosa>=0.10.0",
+    "numpy>=1.23.0",
+]
 all = [
     "praisonai-editor[local]",
     "praisonai-editor[tools]",
+    "praisonai-editor[detect-lite]",
 ]
 
 [project.entry-points."praisonaiagents.tools"]
