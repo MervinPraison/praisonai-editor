@@ -1,6 +1,6 @@
 [project]
 name = "praisonai-editor"
-version = "0.1.3"
+version = "0.1.4"
 description = "Protocol-driven audio & video editor for PraisonAI — transcribe, clean, and edit media with AI"
 authors = [
     {name = "Mervin Praison"}
@@ -44,9 +44,13 @@ dev = [
 detect = [
     "inaSpeechSegmenter>=0.7.0",
 ]
+demix = [
+    "demucs>=4.0.0",
+]
 all = [
     "praisonai-editor[local]",
     "praisonai-editor[tools]",
+    "praisonai-editor[demix]",
 ]
 
 [project.entry-points."praisonaiagents.tools"]

@@ -72,6 +72,15 @@ def main():
         help="Audio content detector to use (default: auto -> ensemble), ina (CNN), librosa (spectral), ffmpeg (heuristic)"
     )
     edit_parser.add_argument("--reencode", action="store_true", help="Re-encode instead of copy")
+    edit_parser.add_argument(
+        "--demix",
+        action="store_true",
+        default=False,
+        help=(
+            "Use Demucs stem separation to distinguish singing from talking over music. "
+            "Requires: pip install praisonai-editor[demix]"
+        ),
+    )
     edit_parser.add_argument("--verbose", "-v", action="store_true")
     edit_parser.add_argument("--no-artifacts", action="store_true", help="Don't save artifacts")
 
@@ -217,6 +226,7 @@ def cmd_edit(args):
             output_path=args.output,
             preset=args.preset,
             detector=args.detector,
+            demix=args.demix,
             remove_fillers=not args.no_fillers,
             remove_repetitions=not args.no_repetitions,
             remove_silence=not args.no_silence,

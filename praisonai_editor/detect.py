@@ -76,6 +76,15 @@ def _has_librosa() -> bool:
         return False
 
 
+def _has_demucs() -> bool:
+    """Check if demucs is available."""
+    try:
+        from praisonai_editor._demix import has_demucs  # noqa: F401
+        return has_demucs()
+    except ImportError:
+        return False
+
+
 def _resolve_detector(detector: str) -> str:
     """Resolve 'auto' to the best available detector.
 
@@ -677,20 +686,156 @@ def _extract_all_events(
 
     return sorted(events, key=lambda x: x.start)
 
+def _detect_vocal_presence(
+    vocal_signal, sr: int = 16000, threshold_db: float = -35.0
+) -> bool:
+    """Return True if audible vocal content exists in the vocal stem segment.
+
+    Uses RMS energy in dBFS. A threshold of -35 dBFS corresponds to vocals
+    that are clearly present but may be quiet (prayer, soft speech).
+    This catches content that Whisper might miss due to low confidence.
+
+    Args:
+        vocal_signal: numpy array of vocal stem audio
+        sr: sample rate
+        threshold_db: minimum dBFS for vocal presence (-35 dB = soft vocals)
+    """
+    import math
+    import numpy as np
+
+    if len(vocal_signal) == 0:
+        return False
+    rms = np.sqrt(np.mean(vocal_signal.astype(np.float32) ** 2))
+    rms_db = 20.0 * math.log10(rms + 1e-10)
+    return rms_db > threshold_db
+
+
+def _analyze_energy_ratio(
+    vocal_signal, inst_signal, sr: int = 16000
+) -> Tuple[float, str]:
+    """Option 2: Energy Ratio analysis.
+
+    When a person is simply talking over quiet background music, the vocal
+    track will be significantly louder (>15 dB) than the instrumental track.
+    When the person is singing as part of the song, the instruments are
+    produced at a similar volume to the vocals.
+
+    Returns:
+        (ratio_db, suggestion) where suggestion is 'singing' or 'talking_over_music'.
+    """
+    import math
+    import numpy as np
+
+    def rms_db(sig: "np.ndarray") -> float:
+        rms = np.sqrt(np.mean(sig.astype(np.float32) ** 2))
+        return 20.0 * math.log10(rms + 1e-10)
+
+    vocal_db = rms_db(vocal_signal)
+    inst_db = rms_db(inst_signal)
+    ratio_db = vocal_db - inst_db
+
+    suggestion = "talking_over_music" if ratio_db > 15.0 else "singing"
+    return ratio_db, suggestion
+
+
+def _analyze_vocal_contour(
+    vocal_signal, sr: int = 16000
+) -> Tuple[float, str]:
+    """Option 3: Pitch contour stability analysis.
+
+    Singing produces sustained, stable note pitches. Talking produces
+    rapidly modulated, unstable pitch patterns. We compute the normalised
+    standard deviation of the instantaneous F0 estimate.
+
+    Returns:
+        (pitch_cv, suggestion) where suggestion is 'singing' or 'talking_over_music'.
+    """
+    import numpy as np
+
+    frame_len = 2048
+    hop = 512
+    signal = vocal_signal.astype(np.float32)
+    pitches: List[float] = []
+
+    for i in range(0, len(signal) - frame_len, hop):
+        frame = signal[i : i + frame_len]
+        # Simple autocorrelation-based pitch estimator
+        corr = np.correlate(frame, frame, mode="full")
+        corr = corr[len(corr) // 2 :]
+        lag = int(np.argmax(corr[1:])) + 1
+        if lag > 0:
+            pitches.append(float(sr) / lag)
+
+    if len(pitches) < 3:
+        return 0.0, "singing"  # Not enough data — default to singing
+
+    arr = np.array(pitches, dtype=np.float32)
+    pitch_cv = float(np.std(arr)) / (float(np.mean(arr)) + 1e-6)
+
+    suggestion = "singing" if pitch_cv < 0.5 else "talking_over_music"
+    return pitch_cv, suggestion
+
+
+def _classify_vocal_type(
+    vocals_path: str,
+    inst_path: str,
+    sr: int = 16000,
+    verbose: bool = False,
+) -> str:
+    """Combine Option 2 (energy ratio) + Option 3 (pitch contour) to classify vocals.
+
+    Returns 'singing' | 'talking_over_music'.
+    A majority-vote of the two heuristics is used. Both must agree on
+    'talking_over_music' to override the default of 'singing'.
+    """
+    try:
+        import librosa
+    except ImportError:
+        # Without librosa we cannot do pitched analysis — return generic label
+        return "speech_over_music"
+
+    vocals, _ = librosa.load(vocals_path, sr=sr, mono=True)
+    instruments, _ = librosa.load(inst_path, sr=sr, mono=True)
+
+    ratio_db, energy_vote = _analyze_energy_ratio(vocals, instruments, sr)
+    pitch_cv, pitch_vote = _analyze_vocal_contour(vocals, sr)
+
+    if verbose:
+        print(
+            f"    Vocal analysis — energy_ratio:{ratio_db:+.1f}dB ({energy_vote}), "
+            f"pitch_cv:{pitch_cv:.3f} ({pitch_vote})",
+            flush=True,
+        )
+
+    # Both heuristics must agree for 'talking_over_music'; otherwise 'singing'
+    if energy_vote == "talking_over_music" and pitch_vote == "talking_over_music":
+        return "talking_over_music"
+    return "singing"
+
+
+
 def _ensemble_decision(
     events: List[ContentBlock],
     duration: float,
     chunk_size: float = 1.0,
+    demix: bool = False,
+    demix_cache: Optional[Tuple[str, str]] = None,
     verbose: bool = False,
 ) -> List[ContentBlock]:
-    """Resolve overlapping events into a single unified timeline of distinct blocks."""
+    """Resolve overlapping events into a single unified timeline of distinct blocks.
+
+    If *demix* is True and the vocals/instruments paths are provided via
+    *demix_cache*, `speech_over_music` blocks are further clarified as either
+    ``singing`` (vocal performance over full instrumental accompaniment) or
+    ``talking_over_music`` (speech over quiet background music).
+    """
     import numpy as np
 
     if verbose:
         print("    Running ensemble decision engine to resolve overlaps...", flush=True)
 
     resolved: List[ContentBlock] = []
-    
+
     for t in np.arange(0, duration, chunk_size):
         chunk_start = float(t)
         chunk_end = min(t + chunk_size, duration)
@@ -726,7 +871,98 @@ def _ensemble_decision(
                 confidence=1.0,
             ))
 
+    # Second pass: refine speech_over_music → singing | talking_over_music
+    # Third pass:  scan pure 'music' blocks for hidden vocals Whisper missed
+    if demix and demix_cache is not None:
+        vocals_path, inst_path = demix_cache
+        try:
+            import librosa
+
+            vocals_full, sr = librosa.load(vocals_path, sr=16000, mono=True)
+            inst_full, _ = librosa.load(inst_path, sr=16000, mono=True)
+
+            # -------------------------------
+            # Pass 2: speech_over_music hits
+            # -------------------------------
+            for block in resolved:
+                if block.content_type != "speech_over_music":
+                    continue
+
+                start_s = int(block.start * sr)
+                end_s = int(block.end * sr)
+                v_seg = vocals_full[start_s:end_s]
+                i_seg = inst_full[start_s:end_s]
+
+                if len(v_seg) < sr // 4:
+                    continue  # Too short to analyse
+
+                ratio_db, energy_vote = _analyze_energy_ratio(v_seg, i_seg, sr)
+                _, pitch_vote = _analyze_vocal_contour(v_seg, sr)
+
+                # Strong energy override (>25 dB gap = clearly talking)
+                if ratio_db > 25.0:
+                    block.content_type = "talking_over_music"
+                elif energy_vote == "talking_over_music" and pitch_vote == "talking_over_music":
+                    block.content_type = "talking_over_music"
+                else:
+                    block.content_type = "singing"
+
+                if verbose:
+                    vote_str = f"energy={energy_vote}({ratio_db:+.1f}dB), pitch={pitch_vote}"
+                    print(
+                        f"    [{block.start:.1f}s-{block.end:.1f}s] "
+                        f"speech_over_music → {block.content_type} ({vote_str})",
+                        flush=True,
+                    )
+
+            # -----------------------------------------------
+            # Pass 3: scan 'music' blocks for hidden vocals
+            # Catches quiet speech/prayer that Whisper missed
+            # -----------------------------------------------
+            for block in resolved:
+                if block.content_type != "music":
+                    continue
+
+                start_s = int(block.start * sr)
+                end_s = int(block.end * sr)
+                v_seg = vocals_full[start_s:end_s]
+                i_seg = inst_full[start_s:end_s]
+
+                # Skip if too short or vocals not audible
+                if len(v_seg) < sr // 2:  # < 0.5 s
+                    continue
+                if not _detect_vocal_presence(v_seg, sr):
+                    continue
+
+                # Vocals present — classify further
+                ratio_db, energy_vote = _analyze_energy_ratio(v_seg, i_seg, sr)
+                _, pitch_vote = _analyze_vocal_contour(v_seg, sr)
+
+                if ratio_db > 25.0:
+                    # Strongly dominant vocal = clear speech
+                    new_type = "talking_over_music"
+                elif energy_vote == "talking_over_music" and pitch_vote == "talking_over_music":
+                    new_type = "talking_over_music"
+                else:
+                    new_type = "singing"
+
+                block.content_type = new_type
+
+                if verbose:
+                    vote_str = f"energy={energy_vote}({ratio_db:+.1f}dB), pitch={pitch_vote}"
+                    print(
+                        f"    [{block.start:.1f}s-{block.end:.1f}s] "
+                        f"music → {block.content_type} (vocal found: {vote_str})",
+                        flush=True,
+                    )
+
+        except Exception as exc:
+            if verbose:
+                print(f"    [Warning] demix refinement failed: {exc}", flush=True)
+
     return resolved
+
+
 def _merge_music_blocks(
     blocks: List[ContentBlock],
     max_speech_bridge: float = 30.0,
@@ -789,14 +1025,58 @@ def classify_content(
     speech_gap: float = 2.0,
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
+    demix: bool = False,
     verbose: bool = False,
 ) -> Tuple[List[ContentBlock], List[ContentBlock]]:
-    """Classify audio content, returning (resolved_blocks, all_raw_events)."""
+    """Classify audio content, returning (resolved_blocks, all_raw_events).
+    
+    If *demix* is True and ``demucs`` is installed, the audio will be separated
+    into vocal and instrumental stems before the ensemble decision pass. This
+    enables fine-grained classification of singing vs. talking over music.
+    """
     backend = _resolve_detector(detector)
 
     if backend == "ensemble" or detector == "ensemble" or detector == "auto":
         all_events = _extract_all_events(media_path, transcript, duration, silence_threshold, verbose)
-        resolved = _ensemble_decision(all_events, duration, verbose=verbose)
+
+        # Run Demucs stem separation (Option 2 & 3) if requested and available
+        demix_cache: Optional[Tuple[str, str]] = None
+        _demix_tmpdir: Optional[str] = None
+        if demix:
+            if _has_demucs():
+                try:
+                    from praisonai_editor._demix import isolate_vocals
+                    if verbose:
+                        print("    Running Demucs stem separation...", flush=True)
+                    vocals_path, inst_path = isolate_vocals(media_path, verbose=verbose)
+                    demix_cache = (vocals_path, inst_path)
+                    # Derive tempdir from the vocals_path to clean up later
+                    import pathlib
+                    _demix_tmpdir = str(pathlib.Path(vocals_path).parent.parent.parent)
+                except Exception as exc:
+                    if verbose:
+                        print(f"    [Warning] Demucs stem separation failed: {exc}", flush=True)
+            else:
+                if verbose:
+                    print(
+                        "    [Info] --demix requested but demucs is not installed. "
+                        "Install with: pip install praisonai-editor[demix]",
+                        flush=True,
+                    )
+
+        try:
+            resolved = _ensemble_decision(
+                all_events, duration,
+                demix=demix,
+                demix_cache=demix_cache,
+                verbose=verbose,
+            )
+        finally:
+            # Clean up Demucs temp files after loading into memory inside decision
+            if _demix_tmpdir:
+                import shutil as _shutil
+                _shutil.rmtree(_demix_tmpdir, ignore_errors=True)
+
         resolved = _merge_music_blocks(resolved, verbose=verbose)
         return resolved, all_events
 
@@ -845,9 +1125,15 @@ def create_content_plan(
     speech_gap: float = 2.0,
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
+    demix: bool = False,
     verbose: bool = False,
 ) -> Tuple[EditPlan, List[ContentBlock], List[ContentBlock]]:
     """Create an edit plan based on content classification.
+
+    Args:
+        demix: If True and ``demucs`` is installed, use stem-separation to
+               distinguish ``singing`` from ``talking_over_music`` within
+               ``speech_over_music`` blocks.
 
     Returns:
         Tuple of (EditPlan, List[ContentBlock], List[ContentBlock])
@@ -858,6 +1144,7 @@ def create_content_plan(
         speech_gap=speech_gap,
         silence_threshold=silence_threshold,
         min_block=min_block,
+        demix=demix,
         verbose=verbose,
     )
 
