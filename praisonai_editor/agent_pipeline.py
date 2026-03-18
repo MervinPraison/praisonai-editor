@@ -62,7 +62,7 @@ def prompt_edit(
 
     # Set up artifacts directory for caching
     output_file = Path(output_path)
-    artifacts_dir = output_file.parent / f".praisonai/{input_file.stem}"
+    artifacts_dir = Path.home() / f".praisonai/editor/{input_file.stem}"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: Probe

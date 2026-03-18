@@ -221,21 +221,11 @@ def create_content_plan(
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
     verbose: bool = False,
-) -> EditPlan:
+) -> Tuple[EditPlan, List[ContentBlock]]:
     """Create an edit plan based on content classification.
 
-    Args:
-        media_path: Path to media
-        transcript: Transcription result
-        duration: Total duration
-        keep_types: List of content types to keep ("speech", "music", "silence")
-        speech_gap: Gap threshold for speech block grouping
-        silence_threshold: Volume threshold for music vs silence
-        min_block: Min gap duration to analyze
-        verbose: Print progress
-
     Returns:
-        EditPlan with keep/remove segments
+        Tuple of (EditPlan, List[ContentBlock]) — the plan and the raw detection blocks
     """
     blocks = classify_content(
         media_path, transcript, duration,
@@ -265,10 +255,12 @@ def create_content_plan(
         if s.action == "remove":
             removal_summary[s.category] = removal_summary.get(s.category, 0) + (s.end - s.start)
 
-    return EditPlan(
+    plan = EditPlan(
         segments=segments,
         original_duration=duration,
         edited_duration=kept,
         removed_duration=removed,
         removal_summary=removal_summary,
     )
+
+    return plan, blocks

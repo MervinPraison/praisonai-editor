@@ -154,7 +154,7 @@ def edit_audio(
         output_path = str(input_file.parent / f"{input_file.stem}_edited{input_file.suffix}")
 
     output_file = Path(output_path)
-    artifacts_dir = output_file.parent / f".praisonai/{input_file.stem}"
+    artifacts_dir = Path.home() / f".praisonai/editor/{input_file.stem}"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     artifacts: Dict[str, str] = {}
 
@@ -217,23 +217,32 @@ def edit_audio(
                 json.dump(transcript.to_dict(), f, indent=2)
             artifacts["transcript_json"] = str(json_path)
 
-        # Step 3: Plan + Render
         if verbose:
             print("[3/3] Creating edit plan and rendering...", flush=True)
 
         if use_content_detection:
-            # Content-based editing (songs_only, speech_only, no_silence)
             from .detect import create_content_plan
             keep_map = {
                 "songs_only": ["music"],
                 "speech_only": ["speech"],
                 "no_silence": ["speech", "music"],
             }
-            plan = create_content_plan(
+            plan, blocks = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
                 verbose=verbose,
             )
+            # Save content detection results
+            if save_artifacts:
+                blocks_data = [
+                    {"start": b.start, "end": b.end, "duration": b.duration,
+                     "type": b.content_type, "mean_volume_db": round(b.mean_volume, 1)}
+                    for b in blocks
+                ]
+                blocks_path = artifacts_dir / "content_blocks.json"
+                with open(blocks_path, "w") as f:
+                    json.dump(blocks_data, f, indent=2)
+                artifacts["content_blocks"] = str(blocks_path)
         else:
             # Heuristic editing (podcast, meeting, course, clean)
             editor = HeuristicEditor()
@@ -312,7 +321,7 @@ def edit_video(
         output_path = str(input_file.parent / f"{input_file.stem}_edited{input_file.suffix}")
 
     output_file = Path(output_path)
-    artifacts_dir = output_file.parent / f".praisonai/{input_file.stem}"
+    artifacts_dir = Path.home() / f".praisonai/editor/{input_file.stem}"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     artifacts: Dict[str, str] = {}
 
@@ -384,11 +393,21 @@ def edit_video(
                 "speech_only": ["speech"],
                 "no_silence": ["speech", "music"],
             }
-            plan = create_content_plan(
+            plan, blocks = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
                 verbose=verbose,
             )
+            if save_artifacts:
+                blocks_data = [
+                    {"start": b.start, "end": b.end, "duration": b.duration,
+                     "type": b.content_type, "mean_volume_db": round(b.mean_volume, 1)}
+                    for b in blocks
+                ]
+                blocks_path = artifacts_dir / "content_blocks.json"
+                with open(blocks_path, "w") as f:
+                    json.dump(blocks_data, f, indent=2)
+                artifacts["content_blocks"] = str(blocks_path)
         else:
             editor = HeuristicEditor()
             plan = editor.create_plan(
