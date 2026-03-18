@@ -31,7 +31,8 @@ class ContentBlock:
     """A classified block of audio content."""
     start: float
     end: float
-    content_type: str  # "speech", "music", "silence"
+    content_type: str  # "speech", "music", "silence", "noise", etc.
+    detector: str = "auto"  # which backend generated this block
     mean_volume: float = 0.0  # RMS dB
     crest_factor: float = 0.0
     dynamic_range: float = 0.0
@@ -257,72 +258,15 @@ def _classify_librosa(
             if end_sample > start_sample + sr // 10:  # at least 0.1s
                 gap_audio = y[start_sample:end_sample]
 
-                # Compute spectral features
-                rms = float(np.sqrt(np.mean(gap_audio ** 2)))
-                rms_db = 20 * math.log10(rms + 1e-10)
-
-                if rms_db < silence_threshold:
-                    content_type = "silence"
-                    confidence = 0.9
-                else:
-                    # Spectral centroid — music is more stable
-                    sc = librosa.feature.spectral_centroid(y=gap_audio, sr=sr)[0]
-                    sc_mean = float(np.mean(sc))
-                    sc_std = float(np.std(sc))
-                    sc_cv = sc_std / (sc_mean + 1e-10)  # coefficient of variation
-
-                    # Spectral rolloff
-                    rolloff = librosa.feature.spectral_rolloff(y=gap_audio, sr=sr)[0]
-                    rolloff_mean = float(np.mean(rolloff))
-
-                    # Zero crossing rate
-                    zcr = librosa.feature.zero_crossing_rate(gap_audio)[0]
-                    zcr_mean = float(np.mean(zcr))
-
-                    # Onset strength — music has more regular onsets
-                    onset = librosa.onset.onset_strength(y=gap_audio, sr=sr)
-                    onset_std = float(np.std(onset))
-
-                    # Spectral flatness — music is less flat (more tonal)
-                    flatness = librosa.feature.spectral_flatness(y=gap_audio)[0]
-                    flatness_mean = float(np.mean(flatness))
-
-                    # Score-based classification
-                    music_score = 0.0
-
-                    # Music has more stable spectral centroid (lower CV)
-                    if sc_cv < 0.5:
-                        music_score += 2.0
-                    elif sc_cv < 1.0:
-                        music_score += 1.0
-                    else:
-                        music_score -= 1.0
-
-                    # Music has lower ZCR (tonal vs noisy)
-                    if zcr_mean < 0.05:
-                        music_score += 2.0
-                    elif zcr_mean < 0.1:
-                        music_score += 1.0
-                    else:
-                        music_score -= 1.0
-
-                    # Music is less spectrally flat (more tonal)
-                    if flatness_mean < 0.1:
-                        music_score += 2.0
-                    elif flatness_mean < 0.3:
-                        music_score += 1.0
-
-                    # Music has higher and more consistent onset strength
-                    if onset_std > 0 and onset_std < 5.0:
-                        music_score += 1.0
-
-                    content_type = "music" if music_score >= 3.0 else "speech"
-                    confidence = min(0.9, 0.5 + abs(music_score) * 0.1)
+                content_type, confidence, rms_db, zcr_mean = _librosa_analyze_segment(
+                    gap_audio, sr, silence_threshold
+                )
 
                 all_blocks.append(ContentBlock(
                     start=gap_start,
                     end=gap_end,
                     content_type=content_type,
+                    detector="librosa",
                     mean_volume=rms_db,
                     zero_crossing_rate=zcr_mean if content_type != "silence" else 0,
                     confidence=confidence,
@@ -353,36 +297,126 @@ def _classify_librosa(
         end_sample = min(int(duration * sr), total_samples)
         if end_sample > start_sample + sr // 10:
             gap_audio = y[start_sample:end_sample]
-            rms = float(np.sqrt(np.mean(gap_audio ** 2)))
-            rms_db = 20 * math.log10(rms + 1e-10)
-
-            if rms_db < silence_threshold:
-                content_type = "silence"
-            else:
-                import numpy as np
-                sc = librosa.feature.spectral_centroid(y=gap_audio, sr=sr)[0]
-                zcr = librosa.feature.zero_crossing_rate(gap_audio)[0]
-                flatness = librosa.feature.spectral_flatness(y=gap_audio)[0]
-                music_score = 0.0
-                if float(np.std(sc)) / (float(np.mean(sc)) + 1e-10) < 0.5:
-                    music_score += 2.0
-                if float(np.mean(zcr)) < 0.05:
-                    music_score += 2.0
-                if float(np.mean(flatness)) < 0.1:
-                    music_score += 2.0
-                content_type = "music" if music_score >= 3.0 else "speech"
-
+            content_type, confidence, rms_db, zcr_mean = _librosa_analyze_segment(
+                gap_audio, sr, silence_threshold
+            )
+            all_blocks.append(ContentBlock(
+                start=current_time,
+                end=duration,
+                content_type=content_type,
+                detector="librosa",
+                mean_volume=rms_db,
+                zero_crossing_rate=zcr_mean if content_type != "silence" else 0,
+                confidence=confidence,
+            ))
+            if verbose:
+                print(f"    Gap {current_time:.1f}-{duration:.1f}s: {content_type} "
+                      f"(RMS:{rms_db:.1f}dB ZCR:{zcr_mean if content_type != 'silence' else 0:.3f} "
+                      f"conf:{confidence:.2f})", flush=True)
+        else:
             all_blocks.append(ContentBlock(
                 start=current_time, end=duration,
-                content_type=content_type, mean_volume=rms_db,
+                content_type="silence", mean_volume=-100.0,
             ))
-    elif current_time < duration:
-        all_blocks.append(ContentBlock(
-            start=current_time, end=duration,
-            content_type="silence", mean_volume=-100.0,
-        ))
 
     return all_blocks
+
+
+def _librosa_analyze_segment(
+    audio_segment, sr: int, silence_threshold: float
+) -> Tuple[str, float, float, float]:
+    """Helper to analyze a specific audio segment using librosa."""
+    import librosa
+    import numpy as np
+    import math
+
+    rms = float(np.sqrt(np.mean(audio_segment ** 2)))
+    rms_db = 20 * math.log10(rms + 1e-10)
+
+    if rms_db < silence_threshold:
+        return "silence", 0.9, rms_db, 0.0
+
+    sc = librosa.feature.spectral_centroid(y=audio_segment, sr=sr)[0]
+    sc_mean = float(np.mean(sc))
+    sc_std = float(np.std(sc))
+    sc_cv = sc_std / (sc_mean + 1e-10)
+
+    zcr = librosa.feature.zero_crossing_rate(audio_segment)[0]
+    zcr_mean = float(np.mean(zcr))
+
+    onset = librosa.onset.onset_strength(y=audio_segment, sr=sr)
+    onset_std = float(np.std(onset))
+
+    flatness = librosa.feature.spectral_flatness(y=audio_segment)[0]
+    flatness_mean = float(np.mean(flatness))
+
+    music_score = 0.0
+
+    if sc_cv < 0.5: music_score += 2.0
+    elif sc_cv < 1.0: music_score += 1.0
+    else: music_score -= 1.0
+
+    if zcr_mean < 0.05: music_score += 2.0
+    elif zcr_mean < 0.1: music_score += 1.0
+    else: music_score -= 1.0
+
+    if flatness_mean < 0.1: music_score += 2.0
+    elif flatness_mean < 0.3: music_score += 1.0
+
+    if onset_std > 0 and onset_std < 5.0: music_score += 1.0
+
+    content_type = "music" if music_score >= 3.0 else "speech"
+    confidence = min(0.9, 0.5 + abs(music_score) * 0.1)
+
+    return content_type, confidence, rms_db, zcr_mean
+
+
+def _classify_librosa_full(
+    media_path: str,
+    duration: float,
+    *,
+    window_size: float = 2.0,
+    silence_threshold: float = -45.0,
+    verbose: bool = False,
+) -> List[ContentBlock]:
+    """Classify audio using librosa over the entire timeline using a sliding window."""
+    import librosa
+    
+    if verbose:
+        print("    Using librosa (full timeline) detector", flush=True)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wav_path = _extract_wav(media_path, tmp_dir)
+        y, sr = librosa.load(wav_path, sr=16000, mono=True)
+
+    blocks: List[ContentBlock] = []
+    total_samples = len(y)
+    window_samples = int(window_size * sr)
+
+    for start_sample in range(0, total_samples, window_samples):
+        end_sample = min(start_sample + window_samples, total_samples)
+        segment = y[start_sample:end_sample]
+        start_time = start_sample / sr
+        end_time = end_sample / sr
+
+        if len(segment) < sr // 10:
+            continue
+
+        content_type, confidence, rms_db, zcr_mean = _librosa_analyze_segment(
+            segment, sr, silence_threshold
+        )
+
+        blocks.append(ContentBlock(
+            start=start_time,
+            end=end_time,
+            content_type=content_type,
+            detector="librosa",
+            mean_volume=rms_db,
+            zero_crossing_rate=zcr_mean if content_type != "silence" else 0,
+            confidence=confidence,
+        ))
+
+    return blocks
 
 
 # ---------------------------------------------------------------------------
@@ -596,18 +630,110 @@ def _group_speech_blocks(
     return blocks
 
 
+def _extract_all_events(
+    media_path: str,
+    transcript: TranscriptResult,
+    duration: float,
+    silence_threshold: float = -45.0,
+    verbose: bool = False,
+) -> List[ContentBlock]:
+    """Run all available detectors to extract overlapping events across the timeline."""
+    events: List[ContentBlock] = []
+
+    # 1. LAYER: Whisper (Speech)
+    speech_blocks = _group_speech_blocks(transcript.words, max_gap=2.0)
+    for b in speech_blocks:
+        b.detector = "whisper"
+        events.append(b)
+
+    # 2. LAYER: librosa (Spectral - full timeline)
+    if _has_librosa():
+        try:
+            librosa_blocks = _classify_librosa_full(
+                media_path, duration, silence_threshold=silence_threshold, verbose=verbose
+            )
+            events.extend(librosa_blocks)
+        except Exception as e:
+            if verbose:
+                print(f"    [Warning] librosa full timeline failed: {e}", flush=True)
+    else:
+        # Fallback to ffmpeg gaps
+        ffmpeg_blocks = _classify_ffmpeg(media_path, transcript, duration, verbose=verbose)
+        for b in ffmpeg_blocks:
+            if b.content_type != "silence":
+                b.detector = "ffmpeg"
+                events.append(b)
+
+    # 3. LAYER: inaSpeechSegmenter (CNN - full timeline)
+    if _has_ina():
+        try:
+            ina_blocks = _classify_ina(media_path, duration, verbose=verbose)
+            for b in ina_blocks:
+                b.detector = "ina"
+                events.append(b)
+        except Exception as e:
+            if verbose:
+                print(f"    [Warning] inaSpeechSegmenter failed: {e}", flush=True)
+
+    return sorted(events, key=lambda x: x.start)
+
+def _ensemble_decision(
+    events: List[ContentBlock],
+    duration: float,
+    chunk_size: float = 1.0,
+    verbose: bool = False,
+) -> List[ContentBlock]:
+    """Resolve overlapping events into a single unified timeline of distinct blocks."""
+    import numpy as np
+
+    if verbose:
+        print("    Running ensemble decision engine to resolve overlaps...", flush=True)
+
+    resolved: List[ContentBlock] = []
+    
+    for t in np.arange(0, duration, chunk_size):
+        chunk_start = float(t)
+        chunk_end = min(t + chunk_size, duration)
+
+        active_events = []
+        for e in events:
+            overlap_start = max(chunk_start, e.start)
+            overlap_end = min(chunk_end, e.end)
+            if overlap_end - overlap_start > (chunk_end - chunk_start) * 0.4:
+                active_events.append(e)
+
+        is_speech = any(e.content_type == "speech" and e.detector in ("whisper", "ina") for e in active_events)
+        is_music = any(e.content_type == "music" and e.detector in ("ina", "librosa", "ffmpeg") for e in active_events)
+
+        if is_speech and is_music:
+            final_type = "speech_over_music"
+        elif is_speech:
+            final_type = "speech"
+        elif is_music:
+            final_type = "music"
+        else:
+            final_type = "silence"
+
+        # Combine contiguous identical chunks
+        if resolved and resolved[-1].content_type == final_type:
+            resolved[-1].end = chunk_end
+        else:
+            resolved.append(ContentBlock(
+                start=chunk_start,
+                end=chunk_end,
+                content_type=final_type,
+                detector="ensemble",
+                confidence=1.0,
+            ))
+
+    return resolved
 def _merge_music_blocks(
     blocks: List[ContentBlock],
     max_speech_bridge: float = 30.0,
     max_silence_bridge: float = 5.0,
     verbose: bool = False,
 ) -> List[ContentBlock]:
-    """Merge adjacent music blocks separated by short speech or silence gaps.
-
-    Songs run for minutes — Whisper may detect a few words in lyrics,
-    creating tiny speech blocks that fragment the music. This step
-    consolidates them.
-    """
+    """Merge adjacent music blocks separated by short gaps."""
     if len(blocks) < 3:
         return blocks
 
@@ -618,10 +744,11 @@ def _merge_music_blocks(
         prev = merged[-1]
         curr = blocks[i]
 
-        if (prev.content_type == "music"
-            and i + 1 < len(blocks)
-            and blocks[i + 1].content_type == "music"):
+        # Consider both pure music and speech_over_music as "music" for bridging
+        is_prev_music = "music" in prev.content_type
+        is_next_music = (i + 1 < len(blocks) and "music" in blocks[i + 1].content_type)
 
+        if is_prev_music and is_next_music:
             gap = curr
             bridge_ok = False
 
@@ -652,81 +779,60 @@ def _merge_music_blocks(
     return merged
 
 
-# ---------------------------------------------------------------------------
-# Main API
-# ---------------------------------------------------------------------------
 
 def classify_content(
     media_path: str,
     transcript: TranscriptResult,
     duration: float,
     *,
-    detector: str = "auto",
+    detector: str = "ensemble",
     speech_gap: float = 2.0,
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
-    max_speech_bridge: float = 30.0,
-    max_silence_bridge: float = 5.0,
     verbose: bool = False,
-) -> List[ContentBlock]:
-    """Classify audio content into speech, music, and silence blocks.
+) -> Tuple[List[ContentBlock], List[ContentBlock]]:
+    """Classify audio content, returning (resolved_blocks, all_raw_events)."""
+    backend = _resolve_detector(detector)
 
-    Args:
-        media_path: Path to media file
-        transcript: Transcription result with word timestamps
-        duration: Total duration in seconds
-        detector: Detection backend — "auto", "ina", "librosa", or "ffmpeg"
-        speech_gap: Max gap (s) between words for same speech block
-        silence_threshold: RMS dB below which = silence
-        min_block: Min gap duration to analyze
-        max_speech_bridge: Max speech gap (s) between music blocks to merge
-        max_silence_bridge: Max silence gap (s) between music blocks to merge
-        verbose: Print progress
+    if backend == "ensemble" or detector == "ensemble" or detector == "auto":
+        all_events = _extract_all_events(media_path, transcript, duration, silence_threshold, verbose)
+        resolved = _ensemble_decision(all_events, duration, verbose=verbose)
+        resolved = _merge_music_blocks(resolved, verbose=verbose)
+        return resolved, all_events
 
-    Returns:
-        List of ContentBlocks covering the full duration
-    """
-    resolved = _resolve_detector(detector)
-
-    if verbose:
-        print(f"    Detector: {resolved}" + (" (auto-selected)" if detector == "auto" else ""),
-              flush=True)
-
-    # Dispatch to backend
-    if resolved == "ina":
-        all_blocks = _classify_ina(media_path, duration, verbose=verbose)
-    elif resolved == "librosa":
-        all_blocks = _classify_librosa(
+    # Backwards compatibility for single detectors
+    all_events = []
+    if backend == "ina":
+        blocks = _classify_ina(media_path, duration, verbose=verbose)
+        for b in blocks: b.detector = "ina"
+        all_events = blocks
+    elif backend == "librosa":
+        blocks = _classify_librosa(
             media_path, transcript, duration,
-            speech_gap=speech_gap,
-            silence_threshold=silence_threshold,
-            min_block=min_block,
-            verbose=verbose,
+            speech_gap=speech_gap, silence_threshold=silence_threshold,
+            min_block=min_block, verbose=verbose
         )
-    elif resolved == "ffmpeg":
-        all_blocks = _classify_ffmpeg(
-            media_path, transcript, duration,
-            speech_gap=speech_gap,
-            silence_threshold=silence_threshold,
-            min_block=min_block,
-            verbose=verbose,
-        )
+        for b in blocks: b.detector = "librosa"
+        all_events = blocks
     else:
-        raise ValueError(f"Unknown detector: {resolved!r}. "
-                         f"Use 'auto', 'ina', 'librosa', or 'ffmpeg'.")
+        blocks = _classify_ffmpeg(
+            media_path, transcript, duration,
+            speech_gap=speech_gap, silence_threshold=silence_threshold,
+            min_block=min_block, verbose=verbose
+        )
+        for b in blocks: b.detector = "ffmpeg"
+        all_events = blocks
 
-    # Post-process: merge fragmented music blocks
-    raw_count = len(all_blocks)
-    all_blocks = _merge_music_blocks(
-        all_blocks,
-        max_speech_bridge=max_speech_bridge,
-        max_silence_bridge=max_silence_bridge,
-        verbose=verbose,
-    )
-    if verbose and len(all_blocks) < raw_count:
-        print(f"    Merged: {raw_count} → {len(all_blocks)} blocks", flush=True)
+    if backend != "ina":
+        blocks = _merge_music_blocks(blocks, verbose=verbose)
 
-    return all_blocks
+    return blocks, all_events
+
+
+# ---------------------------------------------------------------------------
+# Main API
+# ---------------------------------------------------------------------------
+
 
 
 def create_content_plan(
@@ -734,19 +840,19 @@ def create_content_plan(
     transcript: TranscriptResult,
     duration: float,
     *,
-    keep_types: List[str],
+    keep_types: List[str] = ["music"],
     detector: str = "auto",
     speech_gap: float = 2.0,
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
     verbose: bool = False,
-) -> Tuple[EditPlan, List[ContentBlock]]:
+) -> Tuple[EditPlan, List[ContentBlock], List[ContentBlock]]:
     """Create an edit plan based on content classification.
 
     Returns:
-        Tuple of (EditPlan, List[ContentBlock])
+        Tuple of (EditPlan, List[ContentBlock], List[ContentBlock])
     """
-    blocks = classify_content(
+    blocks, all_events = classify_content(
         media_path, transcript, duration,
         detector=detector,
         speech_gap=speech_gap,
@@ -757,7 +863,14 @@ def create_content_plan(
 
     segments = []
     for block in blocks:
-        action = "keep" if block.content_type in keep_types else "remove"
+        # Check if ANY of the keeping types match the block's content_type
+        # e.g. keep_types=["music"], block="speech_over_music" -> keeps it
+        action = "remove"
+        for t in keep_types:
+            if t in block.content_type:
+                action = "keep"
+                break
+            
         segments.append(Segment(
             start=block.start,
             end=block.end,
@@ -783,4 +896,4 @@ def create_content_plan(
         removal_summary=removal_summary,
     )
 
-    return plan, blocks
+    return plan, blocks, all_events

@@ -63,10 +63,14 @@ def main():
     edit_parser.add_argument("--no-repetitions", action="store_true", help="Keep repetitions")
     edit_parser.add_argument("--no-silence", action="store_true", help="Keep silences")
     edit_parser.add_argument("--local", action="store_true", help="Use local whisper")
-    edit_parser.add_argument("--language", help="Language code for transcription (e.g. ta, en, es)")
-    edit_parser.add_argument("--detector", default="auto",
-                             choices=["auto", "ina", "librosa", "ffmpeg"],
-                             help="Audio content detector: auto (best available), ina (CNN), librosa (spectral), ffmpeg (heuristic)")
+    edit_parser.add_argument("--language",        help="Language code for transcription (e.g., 'en', 'es')"
+    )
+    edit_parser.add_argument(
+        "--detector",
+        choices=["auto", "ensemble", "ina", "librosa", "ffmpeg"],
+        default="auto",
+        help="Audio content detector to use (default: auto -> ensemble), ina (CNN), librosa (spectral), ffmpeg (heuristic)"
+    )
     edit_parser.add_argument("--reencode", action="store_true", help="Re-encode instead of copy")
     edit_parser.add_argument("--verbose", "-v", action="store_true")
     edit_parser.add_argument("--no-artifacts", action="store_true", help="Don't save artifacts")

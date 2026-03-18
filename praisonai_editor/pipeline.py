@@ -231,7 +231,7 @@ def edit_audio(
                 "speech_only": ["speech"],
                 "no_silence": ["speech", "music"],
             }
-            plan, blocks = create_content_plan(
+            plan, blocks, all_events = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
                 detector=detector,
@@ -239,15 +239,20 @@ def edit_audio(
             )
             # Save content detection results
             if save_artifacts:
-                blocks_data = [
-                    {"start": b.start, "end": b.end, "duration": b.duration,
-                     "type": b.content_type, "rms_db": round(b.mean_volume, 1),
-                     "crest_factor": round(b.crest_factor, 1),
-                     "dynamic_range": round(b.dynamic_range, 1),
-                     "zero_crossing_rate": round(b.zero_crossing_rate, 4),
-                     "confidence": round(b.confidence, 2)}
-                    for b in blocks
-                ]
+                def _b_dict(b):
+                    return {
+                        "start": b.start, "end": b.end, "duration": b.duration,
+                        "type": b.content_type, "detector": b.detector,
+                        "rms_db": round(b.mean_volume, 1),
+                        "crest_factor": round(b.crest_factor, 1),
+                        "dynamic_range": round(b.dynamic_range, 1),
+                        "zero_crossing_rate": round(b.zero_crossing_rate, 4),
+                        "confidence": round(b.confidence, 2)
+                    }
+                blocks_data = {
+                    "resolved": [_b_dict(b) for b in blocks],
+                    "raw_events": [_b_dict(e) for e in all_events]
+                }
                 blocks_path = artifacts_dir / "content_blocks.json"
                 with open(blocks_path, "w") as f:
                     json.dump(blocks_data, f, indent=2)
