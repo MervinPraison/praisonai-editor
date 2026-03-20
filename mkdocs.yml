@@ -1,4 +1,4 @@
-site_name: PraisonAI Editor
+site_name: 🎙️ PraisonAI Editor
 site_description: AI-powered audio & video editor — transcribe, clean, and edit media with one command
 site_author: Mervin Praison
 site_url: https://docs.praison.ai/editor
@@ -8,8 +8,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
-  logo: assets/logo.png
-  favicon: assets/logo.png
+  logo: material/waveform
+  favicon: material/waveform
   palette:
     - scheme: slate
       primary: deep purple
