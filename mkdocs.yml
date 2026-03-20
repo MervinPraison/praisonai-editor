@@ -1,0 +1,125 @@
+site_name: PraisonAI Editor
+site_description: AI-powered audio & video editor — transcribe, clean, and edit media with one command
+site_author: Mervin Praison
+site_url: https://docs.praison.ai/editor
+repo_url: https://github.com/MervinPraison/praisonai-editor
+repo_name: praisonai-editor
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.instant
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+
+nav:
+  - 🏠 Home: index.md
+  - 🚀 Quick Start: quickstart.md
+  - CLI Commands:
+    - probe: commands/probe.md
+    - convert: commands/convert.md
+    - transcribe: commands/transcribe.md
+    - plan: commands/plan.md
+    - edit: commands/edit.md
+  - 🎛️ Presets:
+    - Overview: presets/index.md
+    - podcast: presets/podcast.md
+    - meeting: presets/meeting.md
+    - course: presets/course.md
+    - clean: presets/clean.md
+    - songs_only: presets/songs_only.md
+    - speech_only: presets/speech_only.md
+    - no_silence: presets/no_silence.md
+  - 🔍 Content Detection:
+    - Overview: detection/index.md
+    - Ensemble (auto): detection/ensemble.md
+    - INA Speech Segmenter: detection/ina.md
+    - Librosa Spectral: detection/librosa.md
+    - FFmpeg Heuristic: detection/ffmpeg.md
+  - 🎵 Stem Separation (Demix):
+    - Overview: demix/index.md
+    - Stem Cache: demix/cache.md
+    - Primary Zone Detection: demix/primary-zone.md
+  - 🤖 AI Agent Editing:
+    - Prompt-based Edit: agent/prompt-edit.md
+    - Agent Tools: agent/tools.md
+  - 🐍 Python API:
+    - Overview: api/index.md
+    - edit_media(): api/edit_media.md
+    - Transcription: api/transcription.md
+    - Edit Plans: api/plans.md
+    - Data Models: api/models.md
+  - 🔌 Extending (Protocols):
+    - Overview: protocols/index.md
+    - Custom Transcriber: protocols/transcriber.md
+    - Custom Editor: protocols/editor.md
+    - Custom Renderer: protocols/renderer.md
+  - 📦 Artifacts & Cache:
+    - Overview: artifacts/index.md
+  - ⚙️ Installation: install.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MervinPraison/praisonai-editor
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/praisonai-editor/
+  version:
+    provider: mike
+
+extra_css:
+  - assets/extra.css
