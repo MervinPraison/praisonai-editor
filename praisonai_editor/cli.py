@@ -81,6 +81,16 @@ def main():
             "Requires: pip install praisonai-editor[demix]"
         ),
     )
+    edit_parser.add_argument(
+        "--primary-zone",
+        action="store_true",
+        default=False,
+        dest="primary_zone_only",
+        help=(
+            "Auto-detect and keep only the primary (largest) singing zone. "
+            "Trims any scatter singing before/after the main performance automatically."
+        ),
+    )
     edit_parser.add_argument("--verbose", "-v", action="store_true")
     edit_parser.add_argument("--no-artifacts", action="store_true", help="Don't save artifacts")
 
@@ -227,6 +237,7 @@ def cmd_edit(args):
             preset=args.preset,
             detector=args.detector,
             demix=args.demix,
+            primary_zone_only=args.primary_zone_only,
             remove_fillers=not args.no_fillers,
             remove_repetitions=not args.no_repetitions,
             remove_silence=not args.no_silence,

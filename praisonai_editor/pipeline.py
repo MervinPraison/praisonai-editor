@@ -56,6 +56,7 @@ def edit_media(
     preset: str = "podcast",
     detector: str = "auto",
     demix: bool = False,
+    primary_zone_only: bool = False,
     remove_fillers: bool = True,
     remove_repetitions: bool = True,
     remove_silence: bool = True,
@@ -97,6 +98,7 @@ def edit_media(
             preset=preset,
             detector=detector,
             demix=demix,
+            primary_zone_only=primary_zone_only,
             remove_fillers=remove_fillers,
             remove_repetitions=remove_repetitions,
             remove_silence=remove_silence,
@@ -113,6 +115,7 @@ def edit_media(
             preset=preset,
             detector=detector,
             demix=demix,
+            primary_zone_only=primary_zone_only,
             remove_fillers=remove_fillers,
             remove_repetitions=remove_repetitions,
             remove_silence=remove_silence,
@@ -132,6 +135,7 @@ def edit_audio(
     preset: str = "podcast",
     detector: str = "auto",
     demix: bool = False,
+    primary_zone_only: bool = False,
     remove_fillers: bool = True,
     remove_repetitions: bool = True,
     remove_silence: bool = True,
@@ -230,16 +234,20 @@ def edit_audio(
 
         if use_content_detection:
             from .detect import create_content_plan
+            # When demix is enabled, speech_over_music has been precisely split into
+            # 'singing' vs 'talking_over_music' — so songs_only should ONLY keep 'singing' and 'music'.
+            # Without demix, keep speech_over_music too (it hasn't been split).
             keep_map = {
-                "songs_only": ["music"],
-                "speech_only": ["speech"],
-                "no_silence": ["speech", "music"],
+                "songs_only": ["music", "singing"] if demix else ["music", "singing", "speech_over_music"],
+                "speech_only": ["speech", "talking_over_music", "speech_over_music"],
+                "no_silence": ["speech", "music", "singing", "talking_over_music", "speech_over_music"],
             }
             plan, blocks, all_events = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
                 detector=detector,
                 demix=demix,
+                primary_zone_only=primary_zone_only,
                 verbose=verbose,
             )
             # Save content detection results
@@ -259,6 +267,7 @@ def edit_audio(
                     "raw_events": [_b_dict(e) for e in all_events]
                 }
                 blocks_path = artifacts_dir / "content_blocks.json"
+                artifacts_dir.mkdir(parents=True, exist_ok=True)  # ensure dir exists
                 with open(blocks_path, "w") as f:
                     json.dump(blocks_data, f, indent=2)
                 artifacts["content_blocks"] = str(blocks_path)
@@ -304,6 +313,8 @@ def edit_audio(
         )
 
     except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()   # log the full stack to stderr for debugging
         return EditResult(
             input_path=input_path,
             output_path=output_path,
@@ -409,9 +420,9 @@ def edit_video(
         if use_content_detection:
             from .detect import create_content_plan
             keep_map = {
-                "songs_only": ["music"],
-                "speech_only": ["speech"],
-                "no_silence": ["speech", "music"],
+                "songs_only": ["music", "singing", "speech_over_music"],
+                "speech_only": ["speech", "talking_over_music", "speech_over_music"],
+                "no_silence": ["speech", "music", "singing", "talking_over_music", "speech_over_music"],
             }
             plan, blocks = create_content_plan(
                 input_path, transcript, probe.duration,
@@ -430,6 +441,7 @@ def edit_video(
                     for b in blocks
                 ]
                 blocks_path = artifacts_dir / "content_blocks.json"
+                artifacts_dir.mkdir(parents=True, exist_ok=True)  # ensure dir exists
                 with open(blocks_path, "w") as f:
                     json.dump(blocks_data, f, indent=2)
                 artifacts["content_blocks"] = str(blocks_path)

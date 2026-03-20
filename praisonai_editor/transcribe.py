@@ -17,6 +17,9 @@ from .models import TranscriptResult, Word
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
 # Chunk duration in seconds (~10 minutes → fits within 24MB as MP3)
 CHUNK_DURATION_SECS = 600
+# Force chunking when audio exceeds this duration (regardless of file size).
+# 40-min audio compresses to ~19 MB (under 25 MB limit) but times out API.
+MAX_AUDIO_DURATION_SECS = 600
 
 
 def _find_ffmpeg() -> str:
@@ -147,8 +150,12 @@ class OpenAITranscriber:
 
             file_size = os.path.getsize(mp3_path)
 
-            # Step 2: If small enough, transcribe directly
-            if file_size <= MAX_UPLOAD_BYTES:
+            # Estimate duration from file size (mono 64 kbps = 8000 bytes/s)
+            estimated_secs = file_size / 8000
+
+            # Step 2: If small enough AND short enough, transcribe directly.
+            # Long files (>10 min) time out the API even if they fit in 25 MB.
+            if file_size <= MAX_UPLOAD_BYTES and estimated_secs <= MAX_AUDIO_DURATION_SECS:
                 return self._call_api(mp3_path, model, language)
 
             # Step 3: Split into chunks and transcribe each
@@ -163,6 +170,10 @@ class OpenAITranscriber:
 
             for i, chunk_path in enumerate(chunk_paths):
                 chunk_offset = i * CHUNK_DURATION_SECS
+                # Skip empty or near-empty chunk files (last chunk may be <0.1s)
+                # 1289-byte chunk = MP3 header only (no real audio) → "audio_too_short" error
+                if not os.path.exists(chunk_path) or os.path.getsize(chunk_path) < 5000:
+                    continue
                 result = self._call_api(chunk_path, model, language)
 
                 all_texts.append(result.text)
@@ -194,7 +205,8 @@ class OpenAITranscriber:
     ) -> TranscriptResult:
         from openai import OpenAI
 
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        # Generous timeout: 10-min chunk can take a while to upload+process
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=600.0)
 
         with open(audio_path, "rb") as audio_file:
             response = client.audio.transcriptions.create(

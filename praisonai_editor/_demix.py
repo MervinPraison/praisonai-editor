@@ -80,7 +80,23 @@ def isolate_vocals(
     media_path = os.path.abspath(media_path)
     stem = Path(media_path).stem
 
-    tmp_dir = tempfile.mkdtemp(prefix="praisonai_demix_")
+    # ---- Stem cache ----
+    # Key the cache on the SHA-256 of the media file so the same input always
+    # reuses already-separated stems (Demucs is slow on CPU).
+    import hashlib
+    with open(media_path, "rb") as _f:
+        file_hash = hashlib.sha256(_f.read(8 * 1024 * 1024)).hexdigest()[:16]   # first 8 MiB
+    cache_dir = Path.home() / ".praisonai" / "editor" / ".demix_cache" / file_hash
+    cached_vocals = cache_dir / "vocals.wav"
+    cached_inst   = cache_dir / "no_vocals.wav"
+    if cached_vocals.exists() and cached_inst.exists():
+        if verbose:
+            print(f"    ↻ Reusing cached Demucs stems ({cache_dir})", flush=True)
+        return str(cached_vocals), str(cached_inst)
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir = str(cache_dir)   # write stems directly into cache dir
+
 
     try:
         # Load model
@@ -147,6 +163,6 @@ def isolate_vocals(
         return vocals_path, inst_path
 
     except Exception:
-        import shutil
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        # Don't delete the cache dir — partial stems will be ignored next
+        # run because we check for both files' existence before reusing.
         raise

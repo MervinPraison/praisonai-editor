@@ -734,7 +734,7 @@ def _analyze_energy_ratio(
     inst_db = rms_db(inst_signal)
     ratio_db = vocal_db - inst_db
 
-    suggestion = "talking_over_music" if ratio_db > 15.0 else "singing"
+    suggestion = "talking_over_music" if ratio_db > 12.0 else "singing"
     return ratio_db, suggestion
 
 
@@ -899,7 +899,7 @@ def _ensemble_decision(
                 ratio_db, energy_vote = _analyze_energy_ratio(v_seg, i_seg, sr)
                 _, pitch_vote = _analyze_vocal_contour(v_seg, sr)
 
-                # Strong energy override (>25 dB gap = clearly talking)
+                # Both votes must agree on talking (conservative — avoids mis-labeling songs)
                 if ratio_db > 25.0:
                     block.content_type = "talking_over_music"
                 elif energy_vote == "talking_over_music" and pitch_vote == "talking_over_music":
@@ -939,7 +939,6 @@ def _ensemble_decision(
                 _, pitch_vote = _analyze_vocal_contour(v_seg, sr)
 
                 if ratio_db > 25.0:
-                    # Strongly dominant vocal = clear speech
                     new_type = "talking_over_music"
                 elif energy_vote == "talking_over_music" and pitch_vote == "talking_over_music":
                     new_type = "talking_over_music"
@@ -981,8 +980,8 @@ def _merge_music_blocks(
         curr = blocks[i]
 
         # Consider both pure music and speech_over_music as "music" for bridging
-        is_prev_music = "music" in prev.content_type
-        is_next_music = (i + 1 < len(blocks) and "music" in blocks[i + 1].content_type)
+        is_prev_music = "music" in prev.content_type or prev.content_type == "singing"
+        is_next_music = (i + 1 < len(blocks) and ("music" in blocks[i + 1].content_type or blocks[i + 1].content_type == "singing"))
 
         if is_prev_music and is_next_music:
             gap = curr
@@ -992,19 +991,28 @@ def _merge_music_blocks(
                 bridge_ok = True
             elif gap.content_type == "silence" and gap.duration <= max_silence_bridge:
                 bridge_ok = True
+            elif gap.content_type == "music" and prev.content_type == "singing" and blocks[i + 1].content_type == "singing":
+                # Special case to bridge instrumental gaps between singing segments
+                # A 180s gap is allowed to keep full worship sessions together
+                if gap.duration <= 180.0:
+                    bridge_ok = True
 
             if bridge_ok:
                 next_music = blocks[i + 1]
                 avg_vol = (prev.mean_volume + next_music.mean_volume) / 2
+                
+                # If we are bridging two singing blocks over music, preserve the 'singing' label
+                final_type = "singing" if (prev.content_type == "singing" and next_music.content_type == "singing") else "music"
+                
                 merged[-1] = ContentBlock(
                     start=prev.start,
                     end=next_music.end,
-                    content_type="music",
+                    content_type=final_type,
                     mean_volume=avg_vol,
                     confidence=max(prev.confidence, next_music.confidence),
                 )
                 if verbose:
-                    print(f"    Merged music: {prev.start:.1f}-{next_music.end:.1f}s "
+                    print(f"    Merged {final_type}: {prev.start:.1f}-{next_music.end:.1f}s "
                           f"(bridged {gap.duration:.1f}s {gap.content_type})", flush=True)
                 i += 2
                 continue
@@ -1050,9 +1058,15 @@ def classify_content(
                         print("    Running Demucs stem separation...", flush=True)
                     vocals_path, inst_path = isolate_vocals(media_path, verbose=verbose)
                     demix_cache = (vocals_path, inst_path)
-                    # Derive tempdir from the vocals_path to clean up later
-                    import pathlib
-                    _demix_tmpdir = str(pathlib.Path(vocals_path).parent.parent.parent)
+                    # Only clean up if stems came from a throwaway temp dir.
+                    # If they came from the persistent cache, do NOT delete.
+                    import pathlib as _pathlib
+                    _vocals_p = _pathlib.Path(vocals_path)
+                    _cache_root = _pathlib.Path.home() / ".praisonai/editor/.demix_cache"
+                    if not str(_vocals_p).startswith(str(_cache_root)):
+                        # Old-style temp dir — safe to delete
+                        _demix_tmpdir = str(_vocals_p.parent.parent.parent)
+                    # else: persistent cache — leave it untouched
                 except Exception as exc:
                     if verbose:
                         print(f"    [Warning] Demucs stem separation failed: {exc}", flush=True)
@@ -1110,6 +1124,90 @@ def classify_content(
 
 
 # ---------------------------------------------------------------------------
+# Singing Zone Auto-Detection
+# ---------------------------------------------------------------------------
+
+
+def _find_primary_singing_zone(
+    blocks: List[ContentBlock],
+    singing_types: Optional[List[str]] = None,
+    gap_tolerance: float = 30.0,
+    verbose: bool = False,
+) -> Optional[Tuple[float, float]]:
+    """Auto-detect the largest contiguous singing zone in the block list.
+
+    Uses a gap-budget approach: accumulate non-singing seconds; when the
+    accumulated gap exceeds *gap_tolerance* without a new singing block
+    resetting it, the zone is closed. The zone boundaries are trimmed to the
+    first and last *actual singing* block (not including trailing gaps/music).
+
+    Args:
+        blocks: Resolved content blocks sorted by start time.
+        singing_types: Block types treated as "singing". Defaults to
+            ``["singing"]``. Pure ``"music"`` blocks can optionally be
+            included if you want interludes inside a performance to extend the
+            zone — but they are NOT used to define zone start/end boundaries.
+        gap_tolerance: Max cumulative non-singing seconds before the zone is
+            closed. Default 30 s — brief pauses stay inside the zone.
+        verbose: Print detected zones.
+
+    Returns:
+        ``(zone_start, zone_end)`` for the zone with the most singing, or
+        ``None`` if no singing found.
+    """
+    if singing_types is None:
+        singing_types = ["singing"]
+
+    if not blocks:
+        return None
+
+    # --- Pass 1: identify candidate zones using gap budget ---
+    # Each zone tracks (first_singing_start, last_singing_end, total_singing_s)
+    zones: List[Tuple[float, float, float]] = []
+    zone_first: Optional[float] = None   # first singing start in zone
+    zone_last: Optional[float] = None    # last singing end in zone
+    zone_singing: float = 0.0
+    gap_budget: float = 0.0              # accumulated non-singing seconds
+
+    for block in blocks:
+        is_singing = block.content_type in singing_types
+
+        if is_singing:
+            if zone_first is None:
+                zone_first = block.start     # begin new zone
+            gap_budget = 0.0                 # reset gap — still singing
+            zone_last = block.end
+            zone_singing += block.duration
+        else:
+            if zone_first is not None:
+                gap_budget += block.duration
+                if gap_budget > gap_tolerance:
+                    # Gap too large — commit zone and reset
+                    zones.append((zone_first, zone_last, zone_singing))
+                    zone_first = None
+                    zone_last = None
+                    zone_singing = 0.0
+                    gap_budget = 0.0
+
+    if zone_first is not None:
+        zones.append((zone_first, zone_last, zone_singing))
+
+    if not zones:
+        return None
+
+    # --- Pass 2: pick zone with most singing ---
+    best = max(zones, key=lambda z: z[2])
+
+    if verbose:
+        print(f"    Detected {len(zones)} singing zone(s):")
+        for z in zones:
+            print(f"      {z[0]:.1f}s–{z[1]:.1f}s  ({z[2]:.0f}s singing)")
+        print(f"    → Primary zone: {best[0]:.1f}s–{best[1]:.1f}s")
+
+    return (best[0], best[1])
+
+
+# ---------------------------------------------------------------------------
 # Main API
 # ---------------------------------------------------------------------------
 
@@ -1126,6 +1224,7 @@ def create_content_plan(
     silence_threshold: float = -45.0,
     min_block: float = 1.0,
     demix: bool = False,
+    primary_zone_only: bool = False,
     verbose: bool = False,
 ) -> Tuple[EditPlan, List[ContentBlock], List[ContentBlock]]:
     """Create an edit plan based on content classification.
@@ -1134,6 +1233,9 @@ def create_content_plan(
         demix: If True and ``demucs`` is installed, use stem-separation to
                distinguish ``singing`` from ``talking_over_music`` within
                ``speech_over_music`` blocks.
+        primary_zone_only: If True, auto-detect the largest contiguous singing
+               zone and remove all blocks outside it. This trims stray singing
+               at the beginning/end of the file automatically.
 
     Returns:
         Tuple of (EditPlan, List[ContentBlock], List[ContentBlock])
@@ -1148,16 +1250,44 @@ def create_content_plan(
         verbose=verbose,
     )
 
+    # ---- Auto-detect primary singing zone ----
+    zone: Optional[Tuple[float, float]] = None
+    if primary_zone_only:
+        zone = _find_primary_singing_zone(
+            blocks,
+            singing_types=["singing", "music"],
+            verbose=verbose,
+        )
+        if zone and verbose:
+            zone_dur = zone[1] - zone[0]
+            print(
+                f"    Primary singing zone: {zone[0]/60:.1f}m–{zone[1]/60:.1f}m "
+                f"({zone_dur:.0f}s = {zone_dur//60:.0f}m{zone_dur%60:.0f}s)",
+                flush=True,
+            )
+
     segments = []
     for block in blocks:
+        # If primary_zone_only is active, drop everything outside the zone
+        if zone is not None:
+            if block.end <= zone[0] or block.start >= zone[1]:
+                segments.append(Segment(
+                    start=block.start,
+                    end=block.end,
+                    action="remove",
+                    reason=f"outside primary singing zone ({block.content_type})",
+                    category=block.content_type,
+                    confidence=block.confidence,
+                ))
+                continue
+
         # Check if ANY of the keeping types match the block's content_type
-        # e.g. keep_types=["music"], block="speech_over_music" -> keeps it
         action = "remove"
         for t in keep_types:
-            if t in block.content_type:
+            if t == block.content_type:
                 action = "keep"
                 break
-            
+
         segments.append(Segment(
             start=block.start,
             end=block.end,
