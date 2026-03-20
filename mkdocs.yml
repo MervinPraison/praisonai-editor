@@ -1,7 +1,7 @@
 site_name: 🎙️ PraisonAI Editor
 site_description: AI-powered audio & video editor — transcribe, clean, and edit media with one command
 site_author: Mervin Praison
-site_url: https://docs.praison.ai/editor
+site_url: https://editing.praison.ai
 repo_url: https://github.com/MervinPraison/praisonai-editor
 repo_name: praisonai-editor
 edit_uri: edit/main/docs/
