@@ -90,13 +90,18 @@ def main():
     )
     trim_parser.add_argument(
         "--force-transcribe",
+        "--no-cache",
         action="store_true",
-        help="Ignore sidecar cache beside the input file; run ASR",
+        dest="force_transcribe",
+        help=(
+            "Do not load transcript cache (~/.praisonai/editor/… or legacy sidecar); "
+            "run ASR; on success replace transcript.json there (unless --no-cache-write)"
+        ),
     )
     trim_parser.add_argument(
         "--no-cache-write",
         action="store_true",
-        help="After ASR, do not write {input}.praisonai.transcript.json",
+        help="After ASR, do not write ~/.praisonai/editor/{stem}_{hash}/transcript.json",
     )
     trim_parser.add_argument(
         "--refine-openai",

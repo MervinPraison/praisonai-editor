@@ -21,13 +21,16 @@ returns JSON ``start_sec`` / ``end_sec`` (text-only; it does not hear the
 file). Requires ``OPENAI_API_KEY``; disable with ``--no-refine-openai`` or
 ``refine_with_openai=False``. Model: ``OPENAI_TRIM_REFINE_MODEL`` or ``DEFAULT_OPENAI_CHAT_MODEL`` (``gpt-4o-mini``).
 
-Transcript cache: ``{input_filename}.praisonai.transcript.json`` next to the
-media file. Re-used when file size and mtime match; use ``--force-transcribe``
-to ignore it.
+Transcript cache (primary): ``~/.praisonai/editor/{stem}_{sha256}/transcript.json``
+(full 64 hex digest so names stay unique). An older folder ``{stem}_{sha12}`` is
+renamed to the long form on access when present. A legacy file next to the media
+(``{name}.praisonai.transcript.json``) is still read if neither editor cache hits.
+Re-used when path, size, and mtime match; use ``--force-transcribe`` or ``--no-cache`` to ignore and re-transcribe (then overwrite cache unless ``--no-cache-write``).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -49,16 +52,61 @@ _META_MTIME = "_praisonai_audio_mtime_ns"
 _META_SIZE = "_praisonai_audio_size"
 
 
+def _editor_cache_root() -> Path:
+    """``~/.praisonai/editor``. Patch in tests to avoid writing under the real home directory."""
+    return Path.home() / ".praisonai" / "editor"
+
+
+def _safe_media_stem(media_path: Path) -> str:
+    stem = re.sub(r"[^\w\-]+", "_", media_path.stem, flags=re.UNICODE).strip("_")
+    return (stem or "media")[:80]
+
+
+def _media_path_digest(media_path: Path) -> str:
+    return hashlib.sha256(str(media_path.resolve()).encode("utf-8")).hexdigest()
+
+
+def _media_cache_dir_name(media_path: Path, *, digest_chars: int | None = None) -> str:
+    """Directory name ``{stem}_{hex}``; ``digest_chars`` defaults to full 64 for uniqueness."""
+    full = _media_path_digest(media_path)
+    n = 64 if digest_chars is None else max(8, min(digest_chars, 64))
+    digest = full[:n]
+    return f"{_safe_media_stem(media_path)}_{digest}"
+
+
+def transcript_cache_file(media_path: Path) -> Path:
+    """Primary trim transcript cache: ``~/.praisonai/editor/{stem}_{sha256}/transcript.json``."""
+    return _editor_cache_root() / _media_cache_dir_name(media_path) / "transcript.json"
+
+
+def _trim_cache_file_short_digest_legacy(media_path: Path) -> Path:
+    """Older layout used a 12-character digest (still read, then folder may be renamed)."""
+    return _editor_cache_root() / _media_cache_dir_name(media_path, digest_chars=12) / "transcript.json"
+
+
+def _upgrade_short_digest_cache_dir(media_path: Path) -> None:
+    """Rename ``{stem}_{12hex}`` → ``{stem}_{64hex}`` when only the short layout exists."""
+    root = _editor_cache_root()
+    old_dir = root / _media_cache_dir_name(media_path, digest_chars=12)
+    new_dir = root / _media_cache_dir_name(media_path)
+    if not old_dir.is_dir() or new_dir.exists():
+        return
+    try:
+        old_dir.rename(new_dir)
+    except OSError:
+        return
+
+
 def transcript_sidecar_path(media_path: Path) -> Path:
+    """Legacy path beside the media file (read if ``transcript_cache_file`` is missing)."""
     return media_path.with_name(f"{media_path.name}.praisonai.transcript.json")
 
 
-def _try_load_transcript_cache(media_path: Path) -> Optional[TranscriptResult]:
-    side = transcript_sidecar_path(media_path)
-    if not side.is_file():
+def _parse_transcript_cache_file(cache_file: Path, media_path: Path) -> Optional[TranscriptResult]:
+    if not cache_file.is_file():
         return None
     try:
-        raw = json.loads(side.read_text(encoding="utf-8"))
+        raw = json.loads(cache_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return None
     if raw.get(_META_VER) != _CACHE_VER:
@@ -75,14 +123,37 @@ def _try_load_transcript_cache(media_path: Path) -> Optional[TranscriptResult]:
     return TranscriptResult.from_dict(core)
 
 
+def _try_load_transcript_cache(media_path: Path) -> tuple[Optional[TranscriptResult], Optional[Path]]:
+    """Return ``(transcript, path_used)`` or ``(None, None)``."""
+    _upgrade_short_digest_cache_dir(media_path)
+
+    primary = transcript_cache_file(media_path)
+    tr = _parse_transcript_cache_file(primary, media_path)
+    if tr is not None:
+        return tr, primary
+
+    short_file = _trim_cache_file_short_digest_legacy(media_path)
+    tr = _parse_transcript_cache_file(short_file, media_path)
+    if tr is not None:
+        return tr, short_file
+
+    legacy = transcript_sidecar_path(media_path)
+    tr = _parse_transcript_cache_file(legacy, media_path)
+    if tr is not None:
+        return tr, legacy
+    return None, None
+
+
 def _write_transcript_cache(media_path: Path, tr: TranscriptResult) -> None:
+    _upgrade_short_digest_cache_dir(media_path)
     st = media_path.stat()
     payload = tr.to_dict()
     payload[_META_VER] = _CACHE_VER
     payload[_META_PATH] = str(media_path.resolve())
     payload[_META_MTIME] = st.st_mtime_ns
     payload[_META_SIZE] = st.st_size
-    out = transcript_sidecar_path(media_path)
+    out = transcript_cache_file(media_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
@@ -207,10 +278,10 @@ def trim_between_phrase_markers(
         model: With API, defaults to ``whisper-1``; with ``use_local=True``, faster-whisper size (e.g. ``base``).
         transcript_path: If set, load this JSON as the transcript (no ASR).
         use_transcript_cache: If True and ``transcript_path`` is unset, try
-            ``transcript_sidecar_path`` beside ``input_path`` when the file
-            still matches (mtime + size).
-        write_transcript_cache: After a fresh ASR run, write the sidecar JSON.
-        force_transcribe: Ignore the sidecar cache and run ASR again.
+            ``transcript_cache_file`` then the legacy path beside the media.
+        write_transcript_cache: After a fresh ASR run, write under
+            ``~/.praisonai/editor/…/transcript.json``.
+        force_transcribe: Ignore disk transcript cache and run ASR again; cache file is overwritten on success if ``write_transcript_cache`` is True.
         refine_with_openai: After fuzzy word match, call OpenAI chat (unless
             False). Same behaviour as CLI ``--refine-openai`` / ``--no-refine-openai``.
 
@@ -228,9 +299,9 @@ def trim_between_phrase_markers(
             raise FileNotFoundError(transcript_path)
         tr = TranscriptResult.from_dict(json.loads(tp.read_text(encoding="utf-8")))
     elif not force_transcribe and use_transcript_cache:
-        tr = _try_load_transcript_cache(inp)
-        if tr is not None:
-            print(f"Using cached transcript: {transcript_sidecar_path(inp)}", flush=True)
+        tr, cache_path = _try_load_transcript_cache(inp)
+        if tr is not None and cache_path is not None:
+            print(f"Using cached transcript: {cache_path}", flush=True)
 
     if tr is None:
         tr = transcribe_audio(

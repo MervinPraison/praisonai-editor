@@ -85,6 +85,8 @@ def __getattr__(name):
         "prompt_edit": ".agent_pipeline",
         # Phrase trim
         "trim_between_phrase_markers": ".phrase_trim",
+        "transcript_cache_file": ".phrase_trim",
+        "transcript_sidecar_path": ".phrase_trim",
     }
 
     if name in _lazy_map:
@@ -121,6 +123,8 @@ __all__ = [
     "edit_media",
     "prompt_edit",
     "trim_between_phrase_markers",
+    "transcript_cache_file",
+    "transcript_sidecar_path",
     # Implementations
     "FFmpegProber",
     "FFmpegConverter",
