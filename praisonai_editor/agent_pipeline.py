@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
+
+DEFAULT_PROMPT_EDIT_LLM = "gpt-4o-mini"
 
 from .models import EditResult
 
@@ -94,7 +97,10 @@ def prompt_edit(
     if verbose:
         print(f"[3/4] AI planning edits based on prompt: '{prompt}'")
 
+    plan_model = os.environ.get("OPENAI_MODEL_NAME", DEFAULT_PROMPT_EDIT_LLM)
+
     plan_agent = Agent(
+        model=plan_model,
         instructions=f"""You are a media editor AI. Given a transcript with word-level timestamps
 and an editing instruction, produce a JSON edit plan.
 

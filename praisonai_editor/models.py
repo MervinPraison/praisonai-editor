@@ -87,6 +87,24 @@ class TranscriptResult:
             "duration": self.duration,
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TranscriptResult":
+        words = [
+            Word(
+                text=str(w.get("text", "")),
+                start=float(w["start"]),
+                end=float(w["end"]),
+                confidence=float(w.get("confidence", 1.0)),
+            )
+            for w in data.get("words", [])
+        ]
+        return cls(
+            text=str(data.get("text", "") or ""),
+            words=words,
+            language=str(data.get("language", "en") or "en"),
+            duration=float(data.get("duration", 0.0)),
+        )
+
     def to_srt(self) -> str:
         """Convert to SRT subtitle format."""
         if not self.words:

@@ -70,6 +70,7 @@ def __getattr__(name):
         "OpenAITranscriber": ".transcribe",
         "LocalTranscriber": ".transcribe",
         "transcribe_audio": ".transcribe",
+        "DEFAULT_OPENAI_TRANSCRIPTION_MODEL": ".transcribe",
         # Plan
         "HeuristicEditor": ".plan",
         "create_edit_plan": ".plan",
@@ -82,6 +83,8 @@ def __getattr__(name):
         "edit_media": ".pipeline",
         # Agent pipeline
         "prompt_edit": ".agent_pipeline",
+        # Phrase trim
+        "trim_between_phrase_markers": ".phrase_trim",
     }
 
     if name in _lazy_map:
@@ -110,12 +113,14 @@ __all__ = [
     "probe_media",
     "convert_media",
     "transcribe_audio",
+    "DEFAULT_OPENAI_TRANSCRIPTION_MODEL",
     "create_edit_plan",
     # Pipeline
     "edit_audio",
     "edit_video",
     "edit_media",
     "prompt_edit",
+    "trim_between_phrase_markers",
     # Implementations
     "FFmpegProber",
     "FFmpegConverter",

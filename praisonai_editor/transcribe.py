@@ -21,6 +21,9 @@ CHUNK_DURATION_SECS = 600
 # 40-min audio compresses to ~19 MB (under 25 MB limit) but times out API.
 MAX_AUDIO_DURATION_SECS = 600
 
+# OpenAI speech-to-text model for ``OpenAITranscriber`` / API ``transcribe_audio`` (when not ``use_local``).
+DEFAULT_OPENAI_TRANSCRIPTION_MODEL = "whisper-1"
+
 
 def _find_ffmpeg() -> str:
     """Find ffmpeg executable."""
@@ -115,7 +118,7 @@ class OpenAITranscriber:
         audio_path: str,
         *,
         language: str | None = None,
-        model: str = "whisper-1",
+        model: str = DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
     ) -> TranscriptResult:
         """Transcribe using the OpenAI Whisper API.
 
@@ -125,7 +128,7 @@ class OpenAITranscriber:
         Args:
             audio_path: Path to audio file
             language: Optional language code
-            model: Whisper model name
+            model: OpenAI transcription model (default ``DEFAULT_OPENAI_TRANSCRIPTION_MODEL``)
 
         Returns:
             TranscriptResult with word-level timestamps
@@ -174,6 +177,11 @@ class OpenAITranscriber:
                 # 1289-byte chunk = MP3 header only (no real audio) → "audio_too_short" error
                 if not os.path.exists(chunk_path) or os.path.getsize(chunk_path) < 5000:
                     continue
+                print(
+                    f"OpenAI Whisper: chunk {i + 1}/{len(chunk_paths)} "
+                    f"(~{CHUNK_DURATION_SECS:.0f}s audio, upload + API wait)...",
+                    flush=True,
+                )
                 result = self._call_api(chunk_path, model, language)
 
                 all_texts.append(result.text)
@@ -238,7 +246,11 @@ class OpenAITranscriber:
 
 
 class LocalTranscriber:
-    """Transcribes audio using local faster-whisper. Implements the Transcriber protocol."""
+    """Transcribes audio using local faster-whisper. Implements the Transcriber protocol.
+
+    Long inputs use the same ~10-minute chunking strategy as :class:`OpenAITranscriber`
+    (mono MP3 extract + split) so a full service file does not require one huge WAV.
+    """
 
     def transcribe(
         self,
@@ -266,36 +278,77 @@ class LocalTranscriber:
         if not path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        # Extract to WAV if needed
-        if path.suffix.lower() not in (".wav",):
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                wav_path = tmp.name
-            try:
-                _extract_audio_wav(str(path), wav_path)
-                return self._run_whisper(wav_path, model, language)
-            finally:
-                if os.path.exists(wav_path):
-                    os.unlink(wav_path)
-        else:
-            return self._run_whisper(str(path), model, language)
+        if path.suffix.lower() == ".wav":
+            whisper_model = WhisperModel(model, device="auto", compute_type="auto")
+            return self._run_whisper_with_model(whisper_model, str(path), language, time_offset=0.0)
 
-    def _run_whisper(
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mp3_path = os.path.join(tmpdir, "audio.mp3")
+            _extract_audio_mp3(str(path), mp3_path)
+            file_size = os.path.getsize(mp3_path)
+            estimated_secs = file_size / 8000
+
+            whisper_model = WhisperModel(model, device="auto", compute_type="auto")
+
+            if file_size <= MAX_UPLOAD_BYTES and estimated_secs <= MAX_AUDIO_DURATION_SECS:
+                return self._run_whisper_with_model(whisper_model, mp3_path, language, time_offset=0.0)
+
+            chunk_dir = os.path.join(tmpdir, "chunks")
+            os.makedirs(chunk_dir)
+            chunk_paths = _split_audio(mp3_path, chunk_dir)
+
+            all_words: List[Word] = []
+            all_texts: List[str] = []
+            total_duration = 0.0
+            detected_language = "en"
+
+            for i, chunk_path in enumerate(chunk_paths):
+                chunk_offset = i * CHUNK_DURATION_SECS
+                if not os.path.exists(chunk_path) or os.path.getsize(chunk_path) < 5000:
+                    continue
+                print(
+                    f"Local Whisper: chunk {i + 1}/{len(chunk_paths)} "
+                    f"(~{CHUNK_DURATION_SECS:.0f}s)...",
+                    flush=True,
+                )
+                result = self._run_whisper_with_model(
+                    whisper_model, chunk_path, language, time_offset=0.0
+                )
+                all_texts.append(result.text)
+                detected_language = result.language
+                for w in result.words:
+                    all_words.append(
+                        Word(
+                            text=w.text,
+                            start=w.start + chunk_offset,
+                            end=w.end + chunk_offset,
+                            confidence=w.confidence,
+                        )
+                    )
+                total_duration = max(total_duration, chunk_offset + result.duration)
+
+            return TranscriptResult(
+                text=" ".join(all_texts),
+                words=all_words,
+                language=detected_language,
+                duration=total_duration,
+            )
+
+    def _run_whisper_with_model(
         self,
+        whisper_model: object,
         audio_path: str,
-        model: str,
         language: str | None,
+        time_offset: float,
     ) -> TranscriptResult:
-        from faster_whisper import WhisperModel
-
-        whisper_model = WhisperModel(model, device="auto", compute_type="auto")
         segments, info = whisper_model.transcribe(
             audio_path,
             language=language,
             word_timestamps=True,
         )
 
-        words = []
-        full_text = []
+        words: List[Word] = []
+        full_text: List[str] = []
 
         for segment in segments:
             full_text.append(segment.text)
@@ -304,8 +357,8 @@ class LocalTranscriber:
                     words.append(
                         Word(
                             text=w.word,
-                            start=w.start,
-                            end=w.end,
+                            start=w.start + time_offset,
+                            end=w.end + time_offset,
                             confidence=w.probability,
                         )
                     )
@@ -332,7 +385,7 @@ def transcribe_audio(
         audio_path: Path to audio/video file
         use_local: If True, use local faster-whisper
         language: Optional language code
-        model: Model name (default: whisper-1 for API, base for local)
+        model: For API, default ``DEFAULT_OPENAI_TRANSCRIPTION_MODEL``; for local, ``base``
 
     Returns:
         TranscriptResult with word-level timestamps
@@ -349,5 +402,5 @@ def transcribe_audio(
         return transcriber.transcribe(
             audio_path,
             language=language,
-            model=model or "whisper-1",
+            model=model or DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
         )

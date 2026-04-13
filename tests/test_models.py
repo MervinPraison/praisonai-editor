@@ -38,6 +38,22 @@ def test_transcript_result_text():
     assert d["language"] == "en"
 
 
+def test_default_openai_transcription_model_export():
+    from praisonai_editor import DEFAULT_OPENAI_TRANSCRIPTION_MODEL
+    assert DEFAULT_OPENAI_TRANSCRIPTION_MODEL == "whisper-1"
+
+
+def test_transcript_result_from_dict_roundtrip():
+    words = [Word(text="Hi", start=0.1, end=0.3, confidence=0.9)]
+    t = TranscriptResult(text="Hi", words=words, language="en", duration=1.0)
+    t2 = TranscriptResult.from_dict(t.to_dict())
+    assert t2.text == "Hi"
+    assert len(t2.words) == 1
+    assert t2.words[0].text == "Hi"
+    assert t2.words[0].start == 0.1
+    assert t2.duration == 1.0
+
+
 def test_transcript_to_srt():
     words = [
         Word(text="Hello", start=0.0, end=0.5),

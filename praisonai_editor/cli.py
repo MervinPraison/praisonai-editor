@@ -5,6 +5,7 @@ Usage:
     praisonai-editor transcribe input.mp3 --format srt
     praisonai-editor convert input.mp4 --format mp3
     praisonai-editor probe input.mp3
+    praisonai-editor trim talk.mp3 --start "..." --end "..." --local
 """
 
 import argparse
@@ -42,6 +43,71 @@ def main():
     trans_parser.add_argument("--format", "-f", choices=["txt", "srt", "json"], default="srt")
     trans_parser.add_argument("--local", action="store_true", help="Use local faster-whisper")
     trans_parser.add_argument("--language", help="Language code (e.g., en)")
+    trans_parser.add_argument(
+        "--model",
+        "-m",
+        help="Model id: whisper-1 for API (default); tiny, base, small, … for --local",
+    )
+
+    # --- trim (phrase boundaries) ---
+    trim_parser = subparsers.add_parser(
+        "trim",
+        help="Transcribe then cut by phrase markers (ffmpeg stream copy)",
+    )
+    trim_parser.add_argument("input", help="Input media file")
+    trim_parser.add_argument("--output", "-o", help="Output path (default: *_trimmed.ext)")
+    trim_parser.add_argument(
+        "--start",
+        required=True,
+        help="First words to keep (inclusive); fuzzy match on transcript",
+    )
+    trim_parser.add_argument(
+        "--end",
+        required=True,
+        help="Cut before this phrase (exclusive); phrase omitted from output",
+    )
+    trim_parser.add_argument(
+        "--end-first",
+        action="store_true",
+        help="Match first occurrence of --end instead of last",
+    )
+    trim_parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Use faster-whisper locally instead of default OpenAI whisper-1",
+    )
+    trim_parser.add_argument("--language", help="Language code (e.g., en)")
+    trim_parser.add_argument(
+        "--model",
+        "-m",
+        help="API: whisper-1 default. Local: base default; use tiny for speed",
+    )
+    trim_parser.add_argument(
+        "--transcript",
+        "-T",
+        metavar="FILE",
+        help="Use this transcript JSON instead of running ASR",
+    )
+    trim_parser.add_argument(
+        "--force-transcribe",
+        action="store_true",
+        help="Ignore sidecar cache beside the input file; run ASR",
+    )
+    trim_parser.add_argument(
+        "--no-cache-write",
+        action="store_true",
+        help="After ASR, do not write {input}.praisonai.transcript.json",
+    )
+    trim_parser.add_argument(
+        "--refine-openai",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "After fuzzy phrase match, call OpenAI Chat Completions (gpt-4o-mini by default; "
+            "not PraisonAI agents) to adjust start/end from transcript text. "
+            "Requires OPENAI_API_KEY; use --no-refine-openai to skip"
+        ),
+    )
 
     # --- plan ---
     plan_parser = subparsers.add_parser("plan", help="Create edit plan from transcript")
@@ -111,6 +177,8 @@ def main():
             return cmd_plan(args)
         elif args.command == "edit":
             return cmd_edit(args)
+        elif args.command == "trim":
+            return cmd_trim(args)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -164,6 +232,7 @@ def cmd_transcribe(args):
         args.input,
         use_local=args.local,
         language=args.language,
+        model=args.model,
     )
 
     output_format = args.format
@@ -185,6 +254,32 @@ def cmd_transcribe(args):
         print(f"Saved to: {args.output}")
     else:
         print(content)
+    return 0
+
+
+def cmd_trim(args):
+    from .phrase_trim import trim_between_phrase_markers
+
+    output = args.output
+    if not output:
+        p = Path(args.input)
+        output = str(p.parent / f"{p.stem}_trimmed{p.suffix}")
+    path = trim_between_phrase_markers(
+        args.input,
+        output,
+        start_phrase=args.start,
+        end_phrase=args.end,
+        end_last_match=not args.end_first,
+        use_local=args.local,
+        language=args.language,
+        model=args.model,
+        transcript_path=args.transcript,
+        use_transcript_cache=True,
+        write_transcript_cache=not args.no_cache_write,
+        force_transcribe=args.force_transcribe,
+        refine_with_openai=args.refine_openai,
+    )
+    print(f"✓ Wrote: {path}")
     return 0
 
 
