@@ -87,6 +87,8 @@ def __getattr__(name):
         "trim_between_phrase_markers": ".phrase_trim",
         "transcript_cache_file": ".phrase_trim",
         "transcript_sidecar_path": ".phrase_trim",
+        "evaluate_trim_edges": ".trim_eval",
+        "TrimEdgeEvalReport": ".trim_eval",
     }
 
     if name in _lazy_map:
@@ -125,6 +127,8 @@ __all__ = [
     "trim_between_phrase_markers",
     "transcript_cache_file",
     "transcript_sidecar_path",
+    "evaluate_trim_edges",
+    "TrimEdgeEvalReport",
     # Implementations
     "FFmpegProber",
     "FFmpegConverter",

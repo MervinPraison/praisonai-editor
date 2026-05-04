@@ -13,6 +13,17 @@ input path. By default transcription uses **OpenAI**
 windows of words—no embeddings, no audio relisten. That can miss paraphrases
 or latch onto the wrong repeat.
 
+**Inclusive / exclusive word anchors:** use CLI ``--trim-boundaries phrase-first``
+so the clip **starts** at the first word of ``--start`` (that word is included)
+and **ends** just before the first word of ``--end`` (that word is excluded).
+The default ``window`` mode keeps the older sliding-window timestamps.
+
+**End phrase timing:** the exclusive cut uses the **start** time of the first
+word of ``--end`` (default: **last** occurrence; use ``--end-first`` for the
+first). Whisper word starts are often slightly **late** versus audible speech,
+so you may still hear the opening of the end phrase unless you pass a small
+``--end-guard SEC`` (pulls the cut earlier by ``SEC`` seconds).
+
 **AI refinement (default on for CLI ``trim``):** uses the **OpenAI Python
 SDK** (``ChatCompletion`` / JSON mode)—**not** ``praisonaiagents`` or
 PraisonAI Agent tools (those are used by ``edit --prompt`` / ``prompt_edit``).
@@ -251,6 +262,58 @@ def _phrase_match_starts(words: List[Word], phrase_norm: str, max_span: int = 25
     return starts
 
 
+def _first_sliding_match_window(
+    words: List[Word], phrase_norm: str, max_span: int
+) -> Optional[Tuple[int, int]]:
+    """First inclusive word indices (i, j) where the normalised join contains ``phrase_norm``."""
+    n = len(words)
+    for i in range(n):
+        parts: List[str] = []
+        for j in range(i, min(i + max_span, n)):
+            parts.append(words[j].text)
+            if phrase_norm in _norm(" ".join(parts)):
+                return i, j
+    return None
+
+
+def _tighten_left_to_phrase_first(words: List[Word], i: int, j: int, phrase_norm: str) -> int:
+    """Largest index ``ii`` in ``[i, j]`` with the phrase still in ``join(ii..j)`` (first word of phrase)."""
+    best_ii = i
+    for ii in range(i, j + 1):
+        if phrase_norm in _norm(" ".join(words[t].text for t in range(ii, j + 1))):
+            best_ii = ii
+    return best_ii
+
+
+def _first_phrase_first_word_time(words: List[Word], phrase_norm: str, max_span: int = 55) -> Optional[float]:
+    """Start time of the first word of the first phrase match (inclusive clip start)."""
+    win = _first_sliding_match_window(words, phrase_norm, max_span)
+    if win is None:
+        return None
+    lo, hi = win
+    ii = _tighten_left_to_phrase_first(words, lo, hi, phrase_norm)
+    return float(words[ii].start)
+
+
+def _exclusive_end_phrase_first_word_time(
+    words: List[Word], phrase_norm: str, max_span: int = 25, *, end_last_match: bool
+) -> Optional[float]:
+    """Exclusive end: start time of the first word of ``--end`` (last or first occurrence)."""
+    n = len(words)
+    cands: List[float] = []
+    for j in range(n):
+        i_lo = max(0, j - max_span + 1)
+        best_ii: Optional[int] = None
+        for ii in range(i_lo, j + 1):
+            if phrase_norm in _norm(" ".join(words[t].text for t in range(ii, j + 1))):
+                best_ii = ii if best_ii is None else max(best_ii, ii)
+        if best_ii is not None:
+            cands.append(float(words[best_ii].start))
+    if not cands:
+        return None
+    return max(cands) if end_last_match else min(cands)
+
+
 def trim_between_phrase_markers(
     input_path: str,
     output_path: str,
@@ -266,12 +329,16 @@ def trim_between_phrase_markers(
     write_transcript_cache: bool = True,
     force_transcribe: bool = False,
     refine_with_openai: bool = True,
+    end_guard_seconds: float = 0.0,
+    trim_boundaries: str = "window",
 ) -> str:
     """Transcribe (or load cache / explicit JSON), locate phrases, then ffmpeg ``-c copy`` trim.
 
-    Output runs from the first word of ``start_phrase`` up to (exclusive) the
-    first word of ``end_phrase``. When ``end_last_match`` is True, the end
-    phrase is resolved to its **last** occurrence in the transcript.
+    With ``trim_boundaries='phrase-first'``, output runs from the first word of
+    the matched ``start_phrase`` (inclusive) up to (exclusive) the first word of
+    ``end_phrase``. With ``window``, timestamps follow the legacy sliding-window
+    rule. When ``end_last_match`` is True, the end phrase uses its **last**
+    occurrence unless ``end_first`` is set on the CLI.
 
     Args:
         use_local: If False (default), use OpenAI ``whisper-1`` via ``transcribe_audio``.
@@ -284,6 +351,12 @@ def trim_between_phrase_markers(
         force_transcribe: Ignore disk transcript cache and run ASR again; cache file is overwritten on success if ``write_transcript_cache`` is True.
         refine_with_openai: After fuzzy word match, call OpenAI chat (unless
             False). Same behaviour as CLI ``--refine-openai`` / ``--no-refine-openai``.
+        end_guard_seconds: If > 0, subtract from the exclusive ``t1`` after
+            fuzzy match and optional refinement (clamped so the clip stays valid).
+        trim_boundaries: ``phrase-first`` — start at the first word of the matched
+            ``start_phrase`` (inclusive); end before the first word of ``end_phrase``
+            (exclusive). ``window`` — legacy sliding-window left edge (may start
+            before the spoken phrase). CLI: ``--trim-boundaries``.
 
     Returns:
         Absolute path to the written file.
@@ -318,21 +391,42 @@ def trim_between_phrase_markers(
     if not tr.words:
         raise RuntimeError("Transcription returned no word-level timings.")
 
+    if trim_boundaries not in ("window", "phrase-first"):
+        raise ValueError("trim_boundaries must be 'window' or 'phrase-first'")
+
     s_norm = _norm(start_phrase)
     e_norm = _norm(end_phrase)
-    t0 = _first_phrase_start(tr.words, s_norm)
-    if t0 is None:
-        t0 = _first_phrase_start(tr.words, _norm("what topic are we seeing anyone know about that"))
-    if t0 is None:
-        t0 = _first_phrase_start(tr.words, _norm("so what topic are we seeing"))
-    if t0 is None:
-        raise RuntimeError(f"Start phrase not found in transcript: {start_phrase!r}")
-
-    end_starts = _phrase_match_starts(tr.words, e_norm)
-    if not end_starts:
-        t1 = float(tr.duration or tr.words[-1].end)
+    if trim_boundaries == "phrase-first":
+        t0 = _first_phrase_first_word_time(tr.words, s_norm)
+        if t0 is None:
+            t0 = _first_phrase_first_word_time(
+                tr.words, _norm("what topic are we seeing anyone know about that")
+            )
+        if t0 is None:
+            t0 = _first_phrase_first_word_time(tr.words, _norm("so what topic are we seeing"))
+        if t0 is None:
+            raise RuntimeError(f"Start phrase not found in transcript: {start_phrase!r}")
+        t1_opt = _exclusive_end_phrase_first_word_time(
+            tr.words, e_norm, end_last_match=end_last_match
+        )
+        if t1_opt is None:
+            t1 = float(tr.duration or tr.words[-1].end)
+        else:
+            t1 = t1_opt
     else:
-        t1 = max(end_starts) if end_last_match else min(end_starts)
+        t0 = _first_phrase_start(tr.words, s_norm)
+        if t0 is None:
+            t0 = _first_phrase_start(tr.words, _norm("what topic are we seeing anyone know about that"))
+        if t0 is None:
+            t0 = _first_phrase_start(tr.words, _norm("so what topic are we seeing"))
+        if t0 is None:
+            raise RuntimeError(f"Start phrase not found in transcript: {start_phrase!r}")
+
+        end_starts = _phrase_match_starts(tr.words, e_norm)
+        if not end_starts:
+            t1 = float(tr.duration or tr.words[-1].end)
+        else:
+            t1 = max(end_starts) if end_last_match else min(end_starts)
 
     if t1 <= t0:
         raise RuntimeError(f"Invalid trim range: start={t0}, end={t1}")
@@ -355,6 +449,12 @@ def trim_between_phrase_markers(
 
     if t1 <= t0:
         raise RuntimeError(f"Invalid trim range after refinement: start={t0}, end={t1}")
+
+    if end_guard_seconds and end_guard_seconds > 0:
+        t1 = max(t0 + 0.001, t1 - float(end_guard_seconds))
+
+    if t1 <= t0:
+        raise RuntimeError(f"Invalid trim range after end guard: start={t0}, end={t1}")
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)

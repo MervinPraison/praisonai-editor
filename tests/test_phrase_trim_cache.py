@@ -5,7 +5,10 @@ import json
 import pytest
 
 from praisonai_editor.phrase_trim import (
+    _exclusive_end_phrase_first_word_time,
+    _first_phrase_first_word_time,
     _media_cache_dir_name,
+    _norm,
     _try_load_transcript_cache,
     _upgrade_short_digest_cache_dir,
     _write_transcript_cache,
@@ -145,3 +148,28 @@ def test_legacy_sidecar_still_read(editor_cache_home, tmp_path):
     loaded, path = _try_load_transcript_cache(media)
     assert loaded is not None
     assert path == side
+
+
+def test_phrase_first_end_exclusive_time():
+    words = [
+        Word(text="already", start=1.0, end=1.2),
+        Word(text="you", start=1.2, end=1.4),
+        Word(text="Our", start=1.5, end=2.0),
+        Word(text="Heavenly", start=2.0, end=2.5),
+        Word(text="Father", start=2.5, end=3.0),
+    ]
+    p = _norm("our heavenly father")
+    t = _exclusive_end_phrase_first_word_time(words, p, max_span=10, end_last_match=True)
+    assert t == 1.5
+
+
+def test_phrase_first_start_includes_first_spoken_word_of_phrase():
+    words = [
+        Word(text="skip", start=0.0, end=0.4),
+        Word(text="so", start=0.5, end=0.7),
+        Word(text="what", start=0.7, end=1.0),
+        Word(text="topic", start=1.0, end=1.2),
+    ]
+    p = _norm("so what topic")
+    t = _first_phrase_first_word_time(words, p, max_span=10)
+    assert t == 0.5
