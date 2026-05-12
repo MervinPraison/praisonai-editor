@@ -31,3 +31,8 @@ Thumbs.db
 
 # Editor artifacts (generated per-file during editing)
 .praisonai/
+*.m4a
+*.mp3
+*.json
+*.log
+*.txt
