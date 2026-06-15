@@ -738,14 +738,11 @@ def build_delay():
 
 
 if __name__ == "__main__":
-    base = "/Users/praison/praisonai-audio-editor/.agent"
     for name, builder in [
         ("biblerevelation-100-fold-blessings.html", build_100_fold),
         ("biblerevelation-how-to-prevent-delay.html", build_delay),
     ]:
+        path = _AGENT / name
         html = builder()
-        path = f"{base}/{name}"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(html)
-        h3_count = html.count('level":3')
-        print(f"Wrote {path} — h3: {h3_count}, tables: {html.count('wp:table')}, lists: {html.count('wp:list')}")
+        path.write_text(html, encoding="utf-8")
+        print(f"Wrote {path.name} — tables: {html.count('wp:table')}, lists: {html.count('wp:list')}")
