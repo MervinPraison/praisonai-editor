@@ -3,6 +3,7 @@
 Usage:
     praisonai-editor edit input.mp3 --output edited.mp3
     praisonai-editor transcribe input.mp3 --format srt
+    praisonai-editor extract-text transcript.json -o transcript.txt
     praisonai-editor convert input.mp4 --format mp3
     praisonai-editor probe input.mp3
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
@@ -48,6 +49,18 @@ def main():
         "--model",
         "-m",
         help="Model id: whisper-1 for API (default); tiny, base, small, … for --local",
+    )
+
+    # --- extract-text (from transcript JSON) ---
+    extract_parser = subparsers.add_parser(
+        "extract-text",
+        help="Extract plain text from a transcript JSON file",
+    )
+    extract_parser.add_argument("input", help="Transcript JSON file")
+    extract_parser.add_argument(
+        "--output",
+        "-o",
+        help="Output .txt path (default: same stem as input, .txt extension)",
     )
 
     # --- trim (phrase boundaries) ---
@@ -439,6 +452,8 @@ def main():
             return cmd_convert(args)
         elif args.command == "transcribe":
             return cmd_transcribe(args)
+        elif args.command == "extract-text":
+            return cmd_extract_text(args)
         elif args.command == "plan":
             return cmd_plan(args)
         elif args.command == "edit":
@@ -490,6 +505,20 @@ def cmd_convert(args):
 
     result = convert_media(args.input, output, bitrate=args.bitrate)
     print(f"✓ Converted: {result}")
+    return 0
+
+
+def cmd_extract_text(args):
+    from .models import TranscriptResult
+
+    inp = Path(args.input)
+    if not inp.exists():
+        raise FileNotFoundError(f"Transcript not found: {args.input}")
+
+    tr = TranscriptResult.from_dict(json.loads(inp.read_text(encoding="utf-8")))
+    output = args.output or str(inp.with_suffix(".txt"))
+    Path(output).write_text(tr.text, encoding="utf-8")
+    print(f"Saved to: {output}")
     return 0
 
 

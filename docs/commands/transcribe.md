@@ -42,6 +42,16 @@ praisonai-editor transcribe INPUT [OPTIONS]
     praisonai-editor transcribe podcast.mp3 --format txt
     ```
 
+=== "Text from existing JSON"
+
+    If you already have a transcript JSON (from ``--format json``), extract plain text without re-transcribing:
+
+    ```bash
+    praisonai-editor extract-text words.json -o words.txt
+    # default output: words.txt (same stem as input)
+    praisonai-editor extract-text VCasP2Z2wQM_41m58_to_1h36m41.transcript.json
+    ```
+
 === "JSON with timestamps"
 
     ```bash
