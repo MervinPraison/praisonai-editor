@@ -36,19 +36,56 @@ def _find_ffmpeg() -> str:
     raise FileNotFoundError("ffmpeg not found")
 
 
-def _extract_audio_mp3(media_path: str, output_path: str) -> None:
+def _atempo_filter(speed: float) -> str | None:
+    """Build ffmpeg atempo chain for *speed* (pitch preserved). Each atempo is 0.5–2.0."""
+    if speed == 1.0:
+        return None
+    filters: list[str] = []
+    remaining = speed
+    while remaining > 2.0:
+        filters.append("atempo=2.0")
+        remaining /= 2.0
+    while remaining < 0.5:
+        filters.append("atempo=0.5")
+        remaining /= 0.5
+    filters.append(f"atempo={remaining:.6f}".rstrip("0").rstrip("."))
+    return ",".join(filters)
+
+
+def _scale_transcript(result: TranscriptResult, factor: float) -> TranscriptResult:
+    """Map timestamps from sped-up audio back to original timeline."""
+    if factor == 1.0:
+        return result
+    return TranscriptResult(
+        text=result.text,
+        words=[
+            Word(
+                text=w.text,
+                start=w.start * factor,
+                end=w.end * factor,
+                confidence=w.confidence,
+            )
+            for w in result.words
+        ],
+        language=result.language,
+        duration=result.duration * factor,
+    )
+
+
+def _extract_audio_mp3(media_path: str, output_path: str, *, speed: float = 1.0) -> None:
     """Extract audio from media file to compressed MP3 (mono 64k) for upload."""
     ffmpeg = _find_ffmpeg()
-    cmd = [
-        ffmpeg, "-y",
-        "-i", media_path,
-        "-vn",
+    af = _atempo_filter(speed)
+    cmd = [ffmpeg, "-y", "-i", media_path, "-vn"]
+    if af:
+        cmd.extend(["-af", af])
+    cmd.extend([
         "-acodec", "libmp3lame",
         "-ab", "64k",
         "-ar", "16000",
         "-ac", "1",
         output_path,
-    ]
+    ])
     subprocess.run(cmd, capture_output=True, check=True)
 
 
@@ -119,6 +156,7 @@ class OpenAITranscriber:
         *,
         language: str | None = None,
         model: str = DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
+        speed: float = 1.0,
     ) -> TranscriptResult:
         """Transcribe using the OpenAI Whisper API.
 
@@ -129,6 +167,7 @@ class OpenAITranscriber:
             audio_path: Path to audio file
             language: Optional language code
             model: OpenAI transcription model (default ``DEFAULT_OPENAI_TRANSCRIPTION_MODEL``)
+            speed: Playback speed before ASR (e.g. 2.0 halves API cost; timestamps scaled back)
 
         Returns:
             TranscriptResult with word-level timestamps
@@ -149,7 +188,7 @@ class OpenAITranscriber:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Step 1: Extract audio to compressed MP3 (always — keeps size minimal)
             mp3_path = os.path.join(tmpdir, "audio.mp3")
-            _extract_audio_mp3(str(path), mp3_path)
+            _extract_audio_mp3(str(path), mp3_path, speed=speed)
 
             file_size = os.path.getsize(mp3_path)
 
@@ -159,7 +198,7 @@ class OpenAITranscriber:
             # Step 2: If small enough AND short enough, transcribe directly.
             # Long files (>10 min) time out the API even if they fit in 25 MB.
             if file_size <= MAX_UPLOAD_BYTES and estimated_secs <= MAX_AUDIO_DURATION_SECS:
-                return self._call_api(mp3_path, model, language)
+                return _scale_transcript(self._call_api(mp3_path, model, language), speed)
 
             # Step 3: Split into chunks and transcribe each
             chunk_dir = os.path.join(tmpdir, "chunks")
@@ -198,11 +237,14 @@ class OpenAITranscriber:
 
                 total_duration = max(total_duration, chunk_offset + result.duration)
 
-            return TranscriptResult(
-                text=" ".join(all_texts),
-                words=all_words,
-                language=detected_language,
-                duration=total_duration,
+            return _scale_transcript(
+                TranscriptResult(
+                    text=" ".join(all_texts),
+                    words=all_words,
+                    language=detected_language,
+                    duration=total_duration,
+                ),
+                speed,
             )
 
     def _call_api(
@@ -213,7 +255,6 @@ class OpenAITranscriber:
     ) -> TranscriptResult:
         from openai import OpenAI
 
-        # Generous timeout: 10-min chunk can take a while to upload+process
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=600.0)
 
         with open(audio_path, "rb") as audio_file:
@@ -258,6 +299,7 @@ class LocalTranscriber:
         *,
         language: str | None = None,
         model: str = "base",
+        speed: float = 1.0,
     ) -> TranscriptResult:
         """Transcribe using local faster-whisper.
 
@@ -280,18 +322,27 @@ class LocalTranscriber:
 
         if path.suffix.lower() == ".wav":
             whisper_model = WhisperModel(model, device="auto", compute_type="auto")
-            return self._run_whisper_with_model(whisper_model, str(path), language, time_offset=0.0)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mp3_path = os.path.join(tmpdir, "audio.mp3")
+                _extract_audio_mp3(str(path), mp3_path, speed=speed)
+                return _scale_transcript(
+                    self._run_whisper_with_model(whisper_model, mp3_path, language, time_offset=0.0),
+                    speed,
+                )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             mp3_path = os.path.join(tmpdir, "audio.mp3")
-            _extract_audio_mp3(str(path), mp3_path)
+            _extract_audio_mp3(str(path), mp3_path, speed=speed)
             file_size = os.path.getsize(mp3_path)
             estimated_secs = file_size / 8000
 
             whisper_model = WhisperModel(model, device="auto", compute_type="auto")
 
             if file_size <= MAX_UPLOAD_BYTES and estimated_secs <= MAX_AUDIO_DURATION_SECS:
-                return self._run_whisper_with_model(whisper_model, mp3_path, language, time_offset=0.0)
+                return _scale_transcript(
+                    self._run_whisper_with_model(whisper_model, mp3_path, language, time_offset=0.0),
+                    speed,
+                )
 
             chunk_dir = os.path.join(tmpdir, "chunks")
             os.makedirs(chunk_dir)
@@ -327,11 +378,14 @@ class LocalTranscriber:
                     )
                 total_duration = max(total_duration, chunk_offset + result.duration)
 
-            return TranscriptResult(
-                text=" ".join(all_texts),
-                words=all_words,
-                language=detected_language,
-                duration=total_duration,
+            return _scale_transcript(
+                TranscriptResult(
+                    text=" ".join(all_texts),
+                    words=all_words,
+                    language=detected_language,
+                    duration=total_duration,
+                ),
+                speed,
             )
 
     def _run_whisper_with_model(
@@ -378,6 +432,7 @@ def transcribe_audio(
     use_local: bool = False,
     language: str | None = None,
     model: str | None = None,
+    speed: float = 1.0,
 ) -> TranscriptResult:
     """Transcribe an audio or video file.
 
@@ -386,6 +441,7 @@ def transcribe_audio(
         use_local: If True, use local faster-whisper
         language: Optional language code
         model: For API, default ``DEFAULT_OPENAI_TRANSCRIPTION_MODEL``; for local, ``base``
+        speed: Speed factor before ASR (2.0 = half billed minutes; timestamps mapped back)
 
     Returns:
         TranscriptResult with word-level timestamps
@@ -396,6 +452,7 @@ def transcribe_audio(
             audio_path,
             language=language,
             model=model or "base",
+            speed=speed,
         )
     else:
         transcriber = OpenAITranscriber()
@@ -403,4 +460,5 @@ def transcribe_audio(
             audio_path,
             language=language,
             model=model or DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
+            speed=speed,
         )

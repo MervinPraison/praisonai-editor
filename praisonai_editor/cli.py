@@ -50,6 +50,13 @@ def main():
         "-m",
         help="Model id: whisper-1 for API (default); tiny, base, small, … for --local",
     )
+    trans_parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        metavar="FACTOR",
+        help="Speed audio before ASR (e.g. 2.0 halves API cost; timestamps scaled back)",
+    )
 
     # --- extract-text (from transcript JSON) ---
     extract_parser = subparsers.add_parser(
@@ -530,6 +537,7 @@ def cmd_transcribe(args):
         use_local=args.local,
         language=args.language,
         model=args.model,
+        speed=args.speed,
     )
 
     output_format = args.format

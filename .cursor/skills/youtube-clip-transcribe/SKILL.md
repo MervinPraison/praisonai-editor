@@ -80,10 +80,22 @@ Verify: `ffprobe -v error -show_entries format=duration -of default=nokey=1:nopr
 
 ## Step 3 — Transcribe
 
+**Tamil + English (mixed sermon):** omit `--language` (auto-detect). Do **not** use `--language ta` — English quotes get garbled.
+
+**Pure English:** `--language en` is fine.
+
+**Optional cost save:** `--speed 2` halves billed API minutes (timestamps scaled back). Test quality first — fast Tamil may degrade at 2×.
+
 ```bash
 bash -lc 'cd ~/praisonai-audio-editor && python3 -m praisonai_editor transcribe \
-  "CROPPED.m4a" --format json --language en \
+  "CROPPED.m4a" --format json \
   -o "CROPPED.transcript.json" 2>&1 | tee "CROPPED_transcribe.log"'
+```
+
+With 2× speed (if quality OK on a short sample):
+
+```bash
+python3 -m praisonai_editor transcribe "CROPPED.m4a" --format json --speed 2 -o "CROPPED.transcript.json"
 ```
 
 ## Step 4 — Extract text

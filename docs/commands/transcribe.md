@@ -17,6 +17,7 @@ praisonai-editor transcribe INPUT [OPTIONS]
 | `--format` | `-f` | `srt` | Output format: `srt`, `txt`, `json` |
 | `--local` | | False | Use offline faster-whisper |
 | `--language` | | auto | Language code e.g. `en`, `ta`, `es` |
+| `--speed` | | `1.0` | Speed before ASR (e.g. `2.0` halves API cost; timestamps scaled back) |
 
 ## Examples
 
