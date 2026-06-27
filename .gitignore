@@ -37,3 +37,13 @@ Thumbs.db
 *.log
 *.txt
 *.html
+*.wav
+*.srt
+*.png
+*.csv
+
+# Mac quick-action outputs
+*_ALTERED.*
+*_edited.*
+*_db_chart.*
+*_edit_log.*
