@@ -1,128 +1,136 @@
 ---
 name: youtube-clip-transcribe
-description: Download YouTube audio, crop by start/end timestamps with ffmpeg, transcribe with praisonai-audio-editor, extract plain text to .txt. Use whenever the user provides a YouTube URL with start and finish times, a time range, or clip boundaries (one or many videos).
+description: Downloads YouTube sermon audio, crops by timestamps, optimises volume (quiet or hot), merges multi-part clips, transcribes with praisonai-audio-editor, maps to YAML decks, and packs deliverables. Use when the user gives a YouTube URL with start/end times, full video, two-part merge, sermon transcript, or BIC sermon deck pack.
 ---
 
-# YouTube URL + start/end times → crop → transcribe
+# YouTube clip → normalise → transcribe → pack
 
 Run every step on the user's Mac. **Do not stop at instructions.**
 
-For **multiple URLs**, repeat the pipeline per video — do not mix transcripts.
+Repeat the pipeline per clip. **Never merge transcripts** unless the user explicitly asks to join two videos into one audio file first.
 
 ## Prerequisites
 
 | Tool | Check |
 |------|--------|
-| `yt-dlp` | `yt-dlp --version` |
 | `ffmpeg` / `ffprobe` | `ffmpeg -version` |
 | `OPENAI_API_KEY` | `bash -lc 'test -n "$OPENAI_API_KEY" && echo ok'` |
 | This repo | `~/praisonai-audio-editor` |
+| `yt-dlp` | **conda** `python3 -m yt_dlp` (homebrew `yt-dlp` often returns **403**) |
+| YAML decks | `/Users/praison/praisonaippt/examples/*.yaml` |
 
 **Shell:** use `bash -lc '…'` so `~/.bashrc` loads `OPENAI_API_KEY`.
 
 ## Parse user input
 
-1. **YouTube URL** — extract `{VIDEO_ID}` from `watch?v=`, `youtu.be/`, `live/`
-2. **Start** (inclusive) and **End** / **Finish** — ffmpeg `-to` is **absolute** on the full timeline
-3. **Output dir** (optional) — default repo root `~/praisonai-audio-editor/`
+1. **YouTube URL** → `{VIDEO_ID}`
+2. **Start** / **End** — `-to` is **absolute** on the full timeline
+3. **"till the end"** — `-ss START` only (no `-to`)
+4. **Full video** — skip crop; use `~/Downloads/{VIDEO_ID}_full.m4a`
+5. **Two-part sermon** — crop each, **merge**, then normalise → transcribe once
 
-Timestamp forms: `41:58`, `1:36:41`, `1:01:05`. Normalise to `HH:MM:SS[.fff]`.
+## Output naming
 
-## Output files (one stem per clip)
-
-| Step | Path |
-|------|------|
+| Artifact | Path |
+|----------|------|
 | Full download | `~/Downloads/{VIDEO_ID}_full.m4a` |
-| Cropped audio | `~/praisonai-audio-editor/{VIDEO_ID}_{start}_to_{end}.m4a` |
-| Transcript JSON | `…/{VIDEO_ID}_{start}_to_{end}.transcript.json` |
-| Plain text | `…/{VIDEO_ID}_{start}_to_{end}.transcript.txt` |
-| Log | `…/{VIDEO_ID}_{start}_to_{end}_transcribe.log` |
-
-Example: `VCasP2Z2wQM_41m58_to_1h36m41.m4a`
+| Cropped / normalised | `~/praisonai-audio-editor/{stem}.m4a` |
+| Transcript JSON | `…/{stem}.transcript.json` |
+| Plain text | `…/{stem}.transcript.txt` |
+| Log | `…/{stem}_transcribe.log` |
 
 ## Checklist
 
 ```
-Per YouTube URL:
-- [ ] Download full audio (NOT --download-sections for long clips)
-- [ ] Crop with ffmpeg (-c copy)
-- [ ] Verify duration (ffprobe ≈ end − start)
-- [ ] Transcribe → JSON
-- [ ] Extract plain text → .txt
-- [ ] Sanity-check: JSON duration ≈ ffprobe; preview open/close text
-
-Final report:
-- [ ] YouTube URL, crop window, all output paths
-- [ ] Duration, word count, opening/closing sentences
+- [ ] Download (conda yt-dlp)
+- [ ] Crop or merge parts
+- [ ] Normalise volume — report mean/max before & after
+- [ ] ffprobe duration check
+- [ ] transcribe --format json
+- [ ] extract-text
+- [ ] Pack + YAML map (if requested)
 ```
 
 ## Step 1 — Download
 
 ```bash
-bash -lc 'yt-dlp -f "ba/b" --no-playlist --concurrent-fragments 8 --no-part \
+zsh -c "source $(conda info --base)/etc/profile.d/conda.sh && conda activate test && \
+  python3 -m yt_dlp -f 'ba/b' --no-playlist --concurrent-fragments 8 --no-part \
   -x --audio-format m4a \
-  -o "/Users/praison/Downloads/{VIDEO_ID}_full.%(ext)s" \
-  "YOUTUBE_URL"'
+  -o '/Users/praison/Downloads/{VIDEO_ID}_full.%(ext)s' 'URL'"
 ```
 
-Add `--cookies-from-browser chrome` if needed.
+403 → `pip install -U yt-dlp` + `--extractor-args 'youtube:player_client=android,web'`.  
+**No `--print` on download** — it can skip writing the file.
 
 ## Step 2 — Crop
 
 ```bash
-ffmpeg -y -nostdin -i "/Users/praison/Downloads/{VIDEO_ID}_full.m4a" \
-  -ss "START" -to "END" \
-  -map 0:a:0 -c copy \
-  "/Users/praison/praisonai-audio-editor/{VIDEO_ID}_{start}_to_{end}.m4a"
+ffmpeg -y -nostdin -i FULL.m4a -ss START -to END -map 0:a:0 -c copy OUT.m4a
+# end of video: omit -to
 ```
 
-Verify: `ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 CROPPED.m4a`
+## Step 2b — Volume optimisation
+
+Target: **−16 LUFS**, **−1.5 dBTP**.
+
+| Condition | Action |
+|-----------|--------|
+| Too quiet (mean &lt; −22 dB or max &lt; −8 dB) | Auto loudnorm |
+| Optimal (−22…−14 mean, −8…−2 max) | Skip — "Volume OK" |
+| Too loud (mean &gt; −12 dB or max ≥ −1 dB) | `--in-place --force` |
+
+```bash
+cd ~/praisonai-audio-editor
+python3 -m praisonai_editor normalize "$AUDIO" --in-place
+python3 -m praisonai_editor normalize "$AUDIO" --in-place --force   # hot audio
+```
+
+Wrapper: `scripts/optimize-audio-volume.sh`
+
+## Step 2c — Merge two parts
+
+```bash
+ffmpeg -y -i PART1.m4a -i PART2.m4a \
+  -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" \
+  -c:a aac -b:a 192k MERGED.m4a
+```
+
+Normalise merged file, then transcribe once.
 
 ## Step 3 — Transcribe
 
-**Tamil + English (mixed sermon):** omit `--language` (auto-detect). Do **not** use `--language ta` — English quotes get garbled.
-
-**Pure English:** `--language en` is fine.
-
-**Optional cost save:** `--speed 2` halves billed API minutes (timestamps scaled back). Test quality first — fast Tamil may degrade at 2×.
+Auto-saves `{stem}.transcript.json`. Mixed Tamil/English: omit `--language`.
 
 ```bash
 bash -lc 'cd ~/praisonai-audio-editor && python3 -m praisonai_editor transcribe \
-  "CROPPED.m4a" --format json \
-  -o "CROPPED.transcript.json" 2>&1 | tee "CROPPED_transcribe.log"'
-```
-
-With 2× speed (if quality OK on a short sample):
-
-```bash
-python3 -m praisonai_editor transcribe "CROPPED.m4a" --format json --speed 2 -o "CROPPED.transcript.json"
+  FILE.m4a --format json --language en 2>&1 | tee STEM_transcribe.log'
 ```
 
 ## Step 4 — Extract text
 
 ```bash
-cd ~/praisonai-audio-editor
-python3 -m praisonai_editor extract-text "CROPPED.transcript.json"
+python3 -m praisonai_editor extract-text STEM.transcript.json
 ```
 
-Or in one step from audio: `transcribe … --format txt -o out.txt` (runs ASR again).
+→ `{stem}.transcript.txt`
 
-## Optional (only if user asks)
+## Step 5–6 — YAML map + deck pack
 
-| Request | Action |
-|---------|--------|
-| WordPress / biblerevelation article | Write `.agent/biblerevelation-{slug}.html` from transcript; `apply_highlights.py --yaml … --html …` |
-| Phrase cut instead of timestamps | `python3 -m praisonai_editor trim …` — see `docs/commands/transcribe.md` |
+Map stem → `examples/*.yaml` by topic/verses. Pack script:
 
-**Do not** create per-sermon Python recipe files. Articles = `.html` drafts from transcript.
+```bash
+python3 /Users/praison/praisonaippt/scripts/build_sermon_pack2.py
+```
+
+Output: `~/Downloads/BIC-Sermon-Deck-Pack-2/` + `sermon_video_map.json`
 
 ## Do not use
 
-| Tool | Why |
-|------|-----|
-| `yt-dlp --download-sections` on 30–60 min clips | Real-time re-encode |
-| `transcribe --force-transcribe` | Flag does not exist on `transcribe` |
+- Homebrew `yt-dlp` alone (403)
+- `--download-sections` on long clips
+- `transcribe --force-transcribe`
 
 ## More detail
 
-Extended reference, examples, and WordPress publish flow: `~/.cursor/skills/youtube-clip-transcribe/` (`reference.md`, `examples.md`, `biblerevelation-publish.md`)
+Canonical skill: `~/.cursor/skills/youtube-clip-transcribe/SKILL.md` (`reference.md`, `examples.md`)

@@ -5,6 +5,7 @@ Usage:
     praisonai-editor transcribe input.mp3 --format srt
     praisonai-editor extract-text transcript.json -o transcript.txt
     praisonai-editor convert input.mp4 --format mp3
+    praisonai-editor normalize input.m4a --in-place
     praisonai-editor probe input.mp3
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
     praisonai-editor eval trimmed.mp3 --head-contains "..." --tail-forbid "..."
@@ -37,6 +38,39 @@ def main():
     convert_parser.add_argument("--format", "-f", default="mp3", choices=["mp3", "wav", "m4a"],
                                 help="Output format (default: mp3)")
     convert_parser.add_argument("--bitrate", "-b", default="192k", help="Audio bitrate")
+
+    # --- normalize ---
+    norm_parser = subparsers.add_parser(
+        "normalize",
+        help="Optimise quiet audio loudness (volumedetect → loudnorm when needed)",
+    )
+    norm_parser.add_argument("input", help="Input audio file")
+    norm_parser.add_argument("--output", "-o", help="Output file (default: input.norm.m4a)")
+    norm_parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="Overwrite input when normalisation runs (no-op copy path if already loud enough)",
+    )
+    norm_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Always apply loudnorm even when volume is already OK",
+    )
+    norm_parser.add_argument(
+        "--mean-threshold",
+        type=float,
+        default=-22.0,
+        metavar="DB",
+        help="Normalise when mean_volume below this (default -22)",
+    )
+    norm_parser.add_argument(
+        "--max-threshold",
+        type=float,
+        default=-8.0,
+        metavar="DB",
+        help="Normalise when max_volume below this (default -8)",
+    )
+    norm_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
     # --- transcribe ---
     trans_parser = subparsers.add_parser("transcribe", help="Transcribe audio/video")
@@ -457,6 +491,8 @@ def main():
             return cmd_probe(args)
         elif args.command == "convert":
             return cmd_convert(args)
+        elif args.command == "normalize":
+            return cmd_normalize(args)
         elif args.command == "transcribe":
             return cmd_transcribe(args)
         elif args.command == "extract-text":
@@ -515,6 +551,46 @@ def cmd_convert(args):
     return 0
 
 
+def cmd_normalize(args):
+    from .normalize import optimize_audio_volume
+
+    output = args.output
+    if not output and not args.in_place:
+        p = Path(args.input)
+        output = str(p.with_name(f"{p.stem}.norm{p.suffix}"))
+
+    result = optimize_audio_volume(
+        args.input,
+        output,
+        in_place=args.in_place,
+        force=args.force,
+        mean_threshold=args.mean_threshold,
+        max_threshold=args.max_threshold,
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "path": result.path,
+                    "mean_db": result.mean_db,
+                    "max_db": result.max_db,
+                    "normalized": result.normalized,
+                    "target_lufs": result.target_lufs,
+                    "true_peak_db": result.true_peak_db,
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"mean_volume: {result.mean_db:.1f} dB  max_volume: {result.max_db:.1f} dB")
+        if result.normalized:
+            print(f"✓ Normalised → {result.path} (target {result.target_lufs} LUFS)")
+        else:
+            print(f"✓ Volume OK — no normalisation needed ({result.path})")
+    return 0
+
+
 def cmd_extract_text(args):
     from .models import TranscriptResult
 
@@ -553,10 +629,20 @@ def cmd_transcribe(args):
     else:
         content = json.dumps(result.to_dict(), indent=2)
 
-    if args.output:
-        with open(args.output, "w") as f:
+    output_path = args.output
+    if not output_path:
+        p = Path(args.input)
+        if output_format == "json":
+            output_path = str(p.parent / f"{p.stem}.transcript.json")
+        elif output_format == "srt":
+            output_path = str(p.parent / f"{p.stem}.srt")
+        elif output_format == "txt":
+            output_path = str(p.parent / f"{p.stem}.txt")
+
+    if output_path:
+        with open(output_path, "w") as f:
             f.write(content)
-        print(f"Saved to: {args.output}")
+        print(f"Saved to: {output_path}")
     else:
         print(content)
     return 0
