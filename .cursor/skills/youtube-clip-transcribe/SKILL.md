@@ -100,12 +100,17 @@ Normalise merged file, then transcribe once.
 
 ## Step 3 — Transcribe
 
-Auto-saves `{stem}.transcript.json`. Mixed Tamil/English: omit `--language`.
+**Full rules (Tamil+English, `--speed 2`, sanity checks):** [sermon-transcribe](../sermon-transcribe/SKILL.md)
+
+Mixed Tamil/English: **omit `--language`**. English-dominant: `--language en`.
 
 ```bash
 bash -lc 'cd ~/praisonai-audio-editor && python3 -m praisonai_editor transcribe \
-  FILE.m4a --format json --language en 2>&1 | tee STEM_transcribe.log'
+  FILE.m4a --format json \
+  2>&1 | tee STEM_transcribe.log'
 ```
+
+Optional: `--speed 2` after 5 min quality test (see sermon-transcribe).
 
 ## Step 4 — Extract text
 
