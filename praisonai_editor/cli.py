@@ -8,6 +8,7 @@ Usage:
     praisonai-editor normalize input.m4a --in-place
     praisonai-editor probe input.mp3
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
+    praisonai-editor remove talk.mp3 --range 11:53-12:43
     praisonai-editor eval trimmed.mp3 --head-contains "..." --tail-forbid "..."
 """
 
@@ -103,6 +104,40 @@ def main():
         "-o",
         help="Output .txt path (default: same stem as input, .txt extension)",
     )
+
+    # --- remove (time ranges) ---
+    remove_parser = subparsers.add_parser(
+        "remove",
+        help="Remove time ranges from audio/video (e.g. 11:53-12:43)",
+    )
+    remove_parser.add_argument("input", help="Input media file")
+    remove_parser.add_argument("--output", "-o", help="Output path (default: *_cut.ext)")
+    remove_parser.add_argument(
+        "--range",
+        "-r",
+        action="append",
+        metavar="START-END",
+        help="Range to remove, e.g. 11:53-12:43 (repeatable)",
+    )
+    remove_parser.add_argument(
+        "--from",
+        dest="cut_from",
+        metavar="TIME",
+        help="Single range start (use with --to)",
+    )
+    remove_parser.add_argument(
+        "--to",
+        dest="cut_to",
+        metavar="TIME",
+        help="Single range end (use with --from)",
+    )
+    remove_parser.add_argument(
+        "--reencode",
+        action="store_true",
+        help="Re-encode instead of stream copy (slower, cleaner cuts)",
+    )
+    remove_parser.add_argument("--verbose", "-v", action="store_true")
+    remove_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
     # --- trim (phrase boundaries) ---
     trim_parser = subparsers.add_parser(
@@ -501,6 +536,8 @@ def main():
             return cmd_plan(args)
         elif args.command == "edit":
             return cmd_edit(args)
+        elif args.command == "remove":
+            return cmd_remove(args)
         elif args.command == "trim":
             return cmd_trim(args)
         elif args.command == "eval":
@@ -645,6 +682,40 @@ def cmd_transcribe(args):
         print(f"Saved to: {output_path}")
     else:
         print(content)
+    return 0
+
+
+def cmd_remove(args):
+    from .remove_ranges import remove_time_ranges
+
+    ranges: list[str] = list(args.range or [])
+    if args.cut_from is not None or args.cut_to is not None:
+        if args.cut_from is None or args.cut_to is None:
+            print("Error: --from and --to must be used together", file=sys.stderr)
+            return 1
+        ranges.append(f"{args.cut_from}-{args.cut_to}")
+
+    if not ranges:
+        print("Error: provide --range START-END and/or --from TIME --to TIME", file=sys.stderr)
+        return 1
+
+    result = remove_time_ranges(
+        args.input,
+        ranges,
+        output_path=args.output,
+        reencode=args.reencode,
+        verbose=args.verbose,
+    )
+
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        plan = result.plan
+        print(f"✓ Removed {plan.removed_duration:.1f}s → {result.output_path}")
+        print(
+            f"  {plan.original_duration:.1f}s → {plan.edited_duration:.1f}s "
+            f"({len(ranges)} range(s))"
+        )
     return 0
 
 

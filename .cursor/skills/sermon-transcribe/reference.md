@@ -1,21 +1,52 @@
-# Reference — sermon transcribe (Tamil + English + speed)
+# Reference — sermon transcribe (full local pipeline)
 
-## Decision tree
+## Full pipeline decision tree
 
 ```mermaid
 flowchart TD
-    start[Local sermon audio] --> mixed{Tamil + English?}
-    mixed -->|yes| auto[Omit --language]
-    mixed -->|Tamil only| ta["--language ta"]
-    mixed -->|English only| en["--language en"]
-    auto --> cost{Need lower API cost?}
-    cost -->|no| oneX["transcribe 1×"]
-    cost -->|yes| test2x[Test 5 min at --speed 2]
-    test2x --> ok{Quality OK?}
-    ok -->|yes| twoX["transcribe full --speed 2"]
-    ok -->|no| oneX
-    oneX --> extract[extract-text]
-    twoX --> extract
+    start[User provides local audio] --> all[Run FULL pipeline unless step skipped]
+    all --> crop{Start/end times?}
+    crop -->|yes| s1[Step 1 ffmpeg crop]
+    crop -->|no| rem
+    s1 --> rem{Remove ranges?}
+    rem -->|yes| s2[Step 2 praisonai-editor remove]
+    rem -->|no| sil
+    s2 --> sil[Step 3 cut-silence → _ALTERED]
+    sil --> norm[Step 4 normalize → _norm.m4a]
+    norm --> probe[Step 5 ffprobe]
+    probe --> lang[Step 6 language mode]
+    lang --> speed{Cost save?}
+    speed -->|test 2×| s7[Step 7 sample]
+    speed -->|1×| tx
+    s7 --> tx[Step 8 transcribe]
+    tx --> ext[Step 9 extract-text]
+    ext --> sanity[Step 10 sanity]
+    sanity --> final[Step 11 _FINAL.m4a]
+    final --> extra{Article / Spotify?}
+    extra -->|yes| art[Step 12 biblerevelation / metadata]
+    extra -->|no| done[Deliver files]
+```
+
+## One-shot shell skeleton
+
+```bash
+bash -lc 'cd ~/praisonai-audio-editor && \
+  SRC="/path/to/sermon.wav" && STEM="gal_2_17m20_to_56m20" && \
+  # Step 1 crop (optional)
+  # ffmpeg -y -nostdin -i "$SRC" -ss 17:20 -to 56:20 -c copy "${STEM}.wav" && \
+  AUDIO="${STEM}.wav" && \
+  # Step 2 remove (optional)
+  # python3 -m praisonai_editor remove "$AUDIO" -r 11:53-12:43 -o "${STEM}_cut.wav" && AUDIO="${STEM}_cut.wav" && \
+  # Step 3 silence
+  python3 mac/cut-silence.py "$AUDIO" && AUDIO="${STEM}_ALTERED.wav" && \
+  # Step 4 normalise
+  ffmpeg -hide_banner -nostdin -i "$AUDIO" -af volumedetect -f null - 2>&1 | grep volume && \
+  python3 -m praisonai_editor normalize "$AUDIO" -o "${STEM}_norm.m4a" && \
+  AUDIO="${STEM}_norm.m4a" && ln -sf "$(realpath "$AUDIO")" "${STEM}_FINAL.m4a" && \
+  # Step 8–9 transcribe
+  python3 -m praisonai_editor transcribe "$AUDIO" --format json \
+    -o "${STEM}_FINAL.transcript.json" 2>&1 | tee "${STEM}_FINAL_transcribe.log" && \
+  python3 -m praisonai_editor extract-text "${STEM}_FINAL.transcript.json"'
 ```
 
 ## Language behaviour
@@ -30,95 +61,65 @@ flowchart TD
 
 | Run | Words | Text len | English |
 |-----|-------|----------|---------|
-| `--language ta` | 412 | 3,589 | Garbled (`opera`, `articles`) |
-| 1× auto-detect | 1,983 | 11,709 | `Galatians`, `Here`, `faith`, … |
+| `--language ta` | 412 | 3,589 | Garbled |
+| 1× auto-detect | 1,983 | 11,709 | `Galatians`, `faith`, … |
 | 2× auto-detect | 110 | 972 | Repetition, unusable |
+
+## Volume normalise
+
+Target: **−16 LUFS**, **−1.5 dBTP**.
+
+```bash
+python3 -m praisonai_editor normalize INPUT -o OUTPUT.m4a
+python3 -m praisonai_editor normalize INPUT.m4a --in-place
+python3 -m praisonai_editor normalize INPUT --in-place --force   # hot peaks
+```
+
+`normalize` encodes AAC — use `-o …m4a` for `.wav` sources (do not `--in-place` on wav).
+
+| Symptom | Fix |
+|---------|-----|
+| Quiet on Spotify | Step 4 was skipped — re-run normalize |
+| Peaks near 0 dB | `--force` loudnorm |
+| Already optimal | CLI copies file; still report mean/max |
+
+## Remove time ranges
+
+```bash
+python3 -m praisonai_editor remove "$AUDIO" --range "11:53-12:43" -o "${STEM}_cut.wav"
+```
+
+```python
+from praisonai_editor import remove_time_ranges
+remove_time_ranges("sermon.wav", ["11:53-12:43"], output_path="sermon_cut.wav")
+```
+
+## Silence cut
+
+```bash
+CUT_SILENCE_NOISE_DB=-30 python3 mac/cut-silence.py "$AUDIO"
+```
+
+Default **−30 dB** peak for Tamil sermon room noise.
 
 ## API cost (whisper-1)
 
-Billed per **minute of audio file** sent (~$0.006/min).
-
-| Duration | 1× cost | 2× cost |
-|----------|---------|---------|
-| 32 min | ~$0.19 | ~$0.10 |
-| 60 min | ~$0.36 | ~$0.18 |
-
-`--speed 2` in `praisonai_editor` applies ffmpeg `atempo` before upload and multiplies word timestamps ×2 in the result.
-
-Alternative: `gpt-4o-mini-transcribe` (~$0.003/min at 1×) — not default in CLI; pass `--model` if enabled in your OpenAI account.
-
-## Commands
-
-### Standard (recommended for Tamil+English)
-
-```bash
-bash -lc 'cd ~/praisonai-audio-editor && \
-  AUDIO="Double Blessings for Preaching the True Gospel Galatians 1.wav" && \
-  python3 -m praisonai_editor transcribe "$AUDIO" --format json \
-    -o "${AUDIO%.wav}.transcript.json" \
-    2>&1 | tee "${AUDIO%.wav}_transcribe.log" && \
-  python3 -m praisonai_editor extract-text "${AUDIO%.wav}.transcript.json"'
-```
-
-### With 2× speed (after 5 min sample passes)
-
-```bash
-python3 -m praisonai_editor transcribe "$AUDIO" --format json --speed 2 \
-  -o "${STEM}.transcript.json"
-```
-
-### 5 min quality sample
-
-```bash
-ffmpeg -y -nostdin -i "$AUDIO" -t 300 -c copy /tmp/sample.m4a
-python3 -m praisonai_editor transcribe /tmp/sample.m4a --format txt --speed 2
-# Inspect output length and repetition before full run
-```
-
-### Manual 2× + timestamp scale (if not using --speed)
-
-If you transcribe a pre-sped file without `--speed`, scale JSON manually:
-
-```python
-import json
-SPEED = 2.0
-d = json.load(open("STEM.transcript.json"))
-for w in d["words"]:
-    w["start"] = round(w["start"] * SPEED, 3)
-    w["end"] = round(w["end"] * SPEED, 3)
-d["duration"] = round(d["duration"] * SPEED, 3)
-json.dump(d, open("STEM.transcript.json", "w"), indent=2)
-```
-
-Prefer `--speed 2` on the **original** file — scaling is automatic.
-
-## TranscriptResult fields
-
-```json
-{
-  "text": "…",
-  "words": [{"text": "…", "start": 0.0, "end": 0.52, "confidence": 1.0}],
-  "language": "tamil",
-  "duration": 1909.1
-}
-```
-
-`language` is dominant detected language, not per-segment labels.
+~$0.006/min of audio sent. `--speed 2` halves billed minutes after quality gate.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| English words garbled | Remove `--language ta`; use auto-detect |
-| Short transcript, repeated lines | 2× too fast — re-run 1× |
-| `OPENAI_API_KEY` missing | `bash -lc` with `~/.bashrc` |
-| Timeout on long file | Use praisonai-editor (chunked), not raw API |
-| Wrong duration in JSON | After manual 2× file, scale timestamps ×2 |
+| Agent stopped after transcribe | Re-read SKILL golden rule — run Steps 3–4 |
+| English garbled | Omit `--language ta` |
+| Short transcript at 2× | Re-run 1× auto-detect |
+| Transcript timestamps wrong after cuts | Transcribe **after** all edits; use FINAL file |
 
 ## Related workflows
 
 | Task | Skill |
 |------|-------|
-| YouTube → crop → normalise | `youtube-clip-transcribe` |
-| Silence cut (autoedit) | `mac/autoedit-audio.sh` / `cut-silence.py` |
-| Phrase trim | `praisonai-editor trim` — see youtube `reference.md` |
+| YouTube → download → crop → normalise | `youtube-clip-transcribe` |
+| Transcript → article | `biblerevelation-sermon-articles` |
+| Time-range cut | `praisonai-editor remove` |
+| Phrase trim | `praisonai-editor trim` |

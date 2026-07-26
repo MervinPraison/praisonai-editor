@@ -1,13 +1,19 @@
 ---
 name: sermon-transcribe
-description: Transcribes Tamil and English sermon audio (wav/m4a) with praisonai-audio-editor — language auto-detect, optional 2× speed for API cost, extract-text, sanity checks. Use when transcribing sermon clips, mixed Tamil/English audio, autoedited wav, or after crop/normalise; not for YouTube download (see youtube-clip-transcribe).
+description: Full local sermon audio pipeline — crop, remove ranges, silence cut, volume normalise, transcribe (Tamil+English auto-detect), extract-text, sanity checks. Run ALL steps when user provides audio; do not stop at transcribe alone. YouTube download → youtube-clip-transcribe; article → biblerevelation-sermon-articles.
 ---
 
-# Sermon audio → transcribe → plain text
+# Local sermon audio — full pipeline
 
 Run on the user's Mac. **Do not stop at instructions.**
 
-For **YouTube URL + crop + normalise**, run [youtube-clip-transcribe](../youtube-clip-transcribe/SKILL.md) first, then use **Step 3 here** for transcribe rules.
+## Golden rule
+
+When the user provides **local audio** (`.wav` / `.m4a`) and asks you to process / transcribe / prepare for Spotify or article — **run the full pipeline below in order**. Skip a step **only** if the user explicitly says so (e.g. "don't cut silence") or the file is already the output of that step (e.g. already `_ALTERED`).
+
+For **YouTube URL** → [youtube-clip-transcribe](../youtube-clip-transcribe/SKILL.md) (download + crop + normalise), then transcribe rules here from Step 5.
+
+For **transcript → article** → [biblerevelation-sermon-articles](~/.cursor/skills/biblerevelation-sermon-articles/SKILL.md) or [biblerevelation-create-post](~/.cursor/skills/biblerevelation-create-post/SKILL.md).
 
 ## Prerequisites
 
@@ -19,23 +25,149 @@ For **YouTube URL + crop + normalise**, run [youtube-clip-transcribe](../youtube
 
 **Shell:** `bash -lc '…'` so `~/.bashrc` loads the API key.
 
-## Input
+## Full pipeline (local audio)
 
-- Local **`.wav` / `.m4a`** (cropped, autoedited, or normalised)
-- Typical stem: `{topic}.wav` or `{VIDEO_ID}_{start}_to_{end}.m4a`
+```mermaid
+flowchart LR
+    A[Input audio] --> B{Crop times?}
+    B -->|yes| C[ffmpeg crop]
+    B -->|no| D
+    C --> D{Remove ranges?}
+    D -->|yes| E[praisonai-editor remove]
+    D -->|no| F
+    E --> F[cut-silence / autoedit]
+    F --> G[normalize volume]
+    G --> H[transcribe JSON]
+    H --> I[extract-text]
+    I --> J[Sanity check]
+    J --> K{Article requested?}
+    K -->|yes| L[biblerevelation skill]
+    K -->|no| M[Deliver FINAL + transcripts]
+```
 
-## Checklist
+## Checklist — run all unless skipped by user
 
 ```
-- [ ] Choose language mode (mixed Tamil+English → omit --language)
-- [ ] Optional: test --speed 2 on first 5 min before full file
-- [ ] transcribe --format json
-- [ ] extract-text → .transcript.txt
-- [ ] Sanity: duration ≈ ffprobe; word count; opening/closing; English in Latin script
-- [ ] If 2× quality fails → re-run 1× auto-detect
+- [ ] Step 1: Time crop (if user gave start/end on a longer file)
+- [ ] Step 2: Remove time ranges (if user asked to cut a section)
+- [ ] Step 3: Silence cut (cut-silence.py → *_ALTERED*)
+- [ ] Step 4: Volume normalise — report mean/max before & after
+- [ ] Step 5: ffprobe duration on working file
+- [ ] Step 6: Choose language mode (Tamil+English → omit --language)
+- [ ] Step 7: Optional --speed 2 quality test (5 min sample)
+- [ ] Step 8: transcribe --format json
+- [ ] Step 9: extract-text → .transcript.txt
+- [ ] Step 10: Sanity check (duration, words, English scripture)
+- [ ] Step 11: Copy/symlink deliverable → {stem}_FINAL.m4a (or .wav)
+- [ ] Step 12: Article / Spotify copy (only if user asked)
 ```
 
-## Step 1 — Language mode
+Work in `~/praisonai-audio-editor/`. Keep `{stem}` consistent across steps; update `AUDIO=` after each step.
+
+## Output naming
+
+| Stage | Typical file |
+|-------|----------------|
+| Cropped | `{stem}_{start}_to_{end}.wav` |
+| After remove | `{stem}_cut.wav` |
+| After silence cut | `{stem}_ALTERED.wav` |
+| After normalise | `{stem}_norm.m4a` |
+| **Final deliverable** | `{stem}_FINAL.m4a` (symlink or copy of last step) |
+| Transcript | `{stem}_FINAL.transcript.json` / `.txt` |
+| Log | `{stem}_FINAL_transcribe.log` |
+
+Transcribe the **normalised** file so Spotify/article match the published audio.
+
+---
+
+## Step 1 — Time crop (optional)
+
+When user gives **start/end** on a longer local file:
+
+```bash
+ffmpeg -y -nostdin -i "$SRC" -ss START -to END -map 0:a:0 -c copy "${STEM}_cropped.wav"
+# end of file: omit -to, use -ss only
+AUDIO="${STEM}_cropped.wav"
+```
+
+`-to` is **absolute** on the source timeline (same rule as YouTube skill).
+
+---
+
+## Step 2 — Remove time ranges (optional)
+
+When user asks to **cut out** a clock-time section (e.g. `11:53 to 12:43`):
+
+```bash
+python3 -m praisonai_editor remove "$AUDIO" --range "11:53-12:43" \
+  -o "${STEM}_cut.wav" -v
+AUDIO="${STEM}_cut.wav"
+```
+
+Multiple cuts: repeat `-r START-END`. SDK: `remove_time_ranges()`. Agent: `audio_remove_range_tool`.
+
+**Not the same as:** `trim` (phrase keep) · `edit` (fillers).
+
+---
+
+## Step 3 — Silence cut (default: run)
+
+Remove long silent gaps. Default threshold **−30 dB** peak (Tamil sermon noise floor).
+
+```bash
+python3 ~/praisonai-audio-editor/mac/cut-silence.py "$AUDIO"
+# → {stem}_ALTERED.wav (or pass explicit output path)
+AUDIO="${STEM}_ALTERED.wav"
+```
+
+Tune via env: `CUT_SILENCE_NOISE_DB=-30` `CUT_SILENCE_MIN=1.5` `CUT_SILENCE_MARGIN=0.3`.
+
+Quick Action alternative: `mac/autoedit-audio.sh "$AUDIO"`.
+
+**Skip only** if user says no silence cut or file is already `_ALTERED`.
+
+---
+
+## Step 4 — Volume normalise (default: run)
+
+Target: **−16 LUFS**, **−1.5 dBTP** (Spotify / podcast). **Always measure and report** before & after.
+
+```bash
+# Measure first
+ffmpeg -hide_banner -nostdin -i "$AUDIO" -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_volume"
+
+cd ~/praisonai-audio-editor
+python3 -m praisonai_editor normalize "$AUDIO" -o "${STEM}_norm.m4a"
+# .m4a input: --in-place OK
+# hot peaks (max ≥ −1 dB): add --force
+```
+
+| Condition | Action |
+|-----------|--------|
+| mean &lt; −22 dB or max &lt; −8 dB | Auto loudnorm |
+| mean −22…−14, max −8…−2 | Usually skip (copies file) — still run command to verify |
+| mean &gt; −12 dB or max ≥ −1 dB | `--force` |
+
+Wrapper: `scripts/optimize-audio-volume.sh`
+
+```bash
+AUDIO="${STEM}_norm.m4a"
+ln -sf "$(realpath "$AUDIO")" "${STEM}_FINAL.m4a"   # or cp
+```
+
+**Skip only** if user says already normalised.
+
+---
+
+## Step 5 — ffprobe
+
+```bash
+ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 "$AUDIO"
+```
+
+---
+
+## Step 6 — Language mode
 
 | Audio | Command |
 |-------|---------|
@@ -43,91 +175,75 @@ For **YouTube URL + crop + normalise**, run [youtube-clip-transcribe](../youtube
 | Pure Tamil | `--language ta` |
 | English-dominant | `--language en` |
 
-**Never** `--language ta` on mixed content — English becomes garbled (`opera`, `articles`, transliteration).
+**Never** `--language ta` on mixed content — English becomes garbled.
 
-Whisper does **not** label Tamil vs English per word; output is one continuous string (fine for `.txt`).
+---
 
-## Step 2 — Speed (optional cost save)
+## Step 7 — Speed (optional cost save)
 
-OpenAI `whisper-1` ≈ **$0.006/min** of audio sent. `--speed 2` halves billed minutes; timestamps are scaled back in JSON.
+OpenAI `whisper-1` ≈ **$0.006/min**. `--speed 2` halves cost; timestamps scaled in JSON.
 
-**Quality gate (required):**
+**Quality gate:** test first 5 min at 2×; if repetitive or garbled → **1× auto-detect** (Galatians-style Tamil default).
 
-1. Transcribe **first 5 min** at `--speed 2`
-2. If text is repetitive, &lt; ~500 chars, or Tamil garbled → use **1×** for full file
-3. Galatians-style Tamil sermons: **1× auto-detect** is the reliable default
+---
 
-```bash
-# Full file with built-in speed (timestamps auto-scaled)
-python3 -m praisonai_editor transcribe "$AUDIO" --format json --speed 2 \
-  -o "${STEM}.transcript.json"
-```
+## Step 8 — Transcribe
 
-Manual ffmpeg 2× (legacy / debug):
-
-```bash
-ffmpeg -y -nostdin -i "$AUDIO" -af "atempo=2.0" -ar 16000 -ac 1 /tmp/sermon_2x.wav
-```
-
-## Step 3 — Transcribe (default: 1× auto-detect)
+Use **`$AUDIO`** (= normalised FINAL file):
 
 ```bash
 bash -lc 'cd ~/praisonai-audio-editor && \
   python3 -m praisonai_editor transcribe "$AUDIO" --format json \
-    -o "${STEM}.transcript.json" \
-    2>&1 | tee "${STEM}_transcribe.log"'
+    -o "${STEM}_FINAL.transcript.json" \
+    2>&1 | tee "${STEM}_FINAL_transcribe.log"'
 ```
 
-Long files: ~600 s chunks automatically. No `--force-transcribe` (flag does not exist).
+---
 
-## Step 4 — Extract plain text
+## Step 9 — Extract plain text
 
 ```bash
-cd ~/praisonai-audio-editor
-python3 -m praisonai_editor extract-text "${STEM}.transcript.json"
+python3 -m praisonai_editor extract-text "${STEM}_FINAL.transcript.json"
 ```
 
-Output: `{stem}.transcript.txt`
+---
 
-## Step 5 — Sanity check
-
-```bash
-ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 "$AUDIO"
-```
-
-```python
-import json, re
-d = json.load(open("STEM.transcript.json"))
-print("dur", d["duration"], "words", len(d["words"]), "len", len(d["text"]))
-print("open:", d["text"][:200])
-print("close:", d["text"][-200:])
-print("english:", re.findall(r"[A-Za-z]{4,}", d["text"])[:12])
-```
+## Step 10 — Sanity check
 
 | Check | Pass |
 |-------|------|
 | `duration` ≈ ffprobe (±2 s) | ✓ |
 | Word count >> 100 for 30 min sermon | ✓ |
-| English scripture in Latin script (`Galatians`, `faith`) | ✓ |
+| English scripture in Latin script | ✓ |
 | No long repeated phrases | ✓ |
+| Volume: mean/max reported in summary to user | ✓ |
 
-## Outputs
+---
 
-| File | Purpose |
-|------|---------|
-| `{stem}.transcript.json` | Words + timestamps |
-| `{stem}.transcript.txt` | Plain text |
-| `{stem}_transcribe.log` | ASR log |
+## Step 11–12 — Deliverables
+
+Report to user:
+
+- `{stem}_FINAL.m4a` — Spotify-ready audio
+- `{stem}_FINAL.transcript.txt` — plain text
+- Volume before/after, duration, % silence removed
+
+If user asked for **article**: run biblerevelation skill on `.transcript.txt`.  
+If user asked for **Spotify metadata**: title + description (no preacher names).
+
+---
 
 ## Do not use
 
 | Action | Why |
 |--------|-----|
-| `--language ta` on Tamil+English | Garbles English quotes |
-| `--speed 2` without quality test | Tamil often degrades (repetition/hallucination) |
-| `transcribe --format txt` then edit | Use JSON + `extract-text` to avoid re-ASR |
+| Transcribe-only when user gave raw audio | Run full pipeline |
+| `--language ta` on Tamil+English | Garbles English |
+| `--speed 2` without quality test | Tamil often fails |
+| Skip normalise for podcast/Spotify | Quiet mean / hot peaks common on local wav |
+| Manual ffmpeg splice for time cuts | Use `praisonai-editor remove` |
 
 ## More detail
 
-- Language decision tree, cost table, fallback workflow: [reference.md](reference.md)
-- YouTube download + crop + normalise: [youtube-clip-transcribe](../youtube-clip-transcribe/SKILL.md)
+- [reference.md](reference.md) — decision tree, commands, troubleshooting
+- [youtube-clip-transcribe](../youtube-clip-transcribe/SKILL.md) — YouTube path

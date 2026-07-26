@@ -1,8 +1,8 @@
 """Tests for agent tool classes."""
 
 from praisonai_editor.agent_tool import (
-    AudioEditorTool, AudioTranscribeTool, MP4ToMP3Tool,
-    audio_editor_tool, audio_transcribe_tool, mp4_to_mp3_tool,
+    AudioEditorTool, AudioRemoveRangeTool, AudioTranscribeTool, MP4ToMP3Tool,
+    audio_editor_tool, audio_remove_range_tool, audio_transcribe_tool, mp4_to_mp3_tool,
 )
 
 
@@ -29,13 +29,21 @@ class TestMP4ToMP3Tool:
         assert tool.name == "mp4_to_mp3"
 
 
+class TestAudioRemoveRangeTool:
+    def test_has_name(self):
+        tool = AudioRemoveRangeTool()
+        assert tool.name == "audio_remove_range"
+
+
 class TestConvenienceInstances:
     def test_instances_exist(self):
         assert audio_editor_tool is not None
         assert audio_transcribe_tool is not None
         assert mp4_to_mp3_tool is not None
+        assert audio_remove_range_tool is not None
 
     def test_instances_have_names(self):
         assert audio_editor_tool.name == "audio_editor"
         assert audio_transcribe_tool.name == "audio_transcribe"
         assert mp4_to_mp3_tool.name == "mp4_to_mp3"
+        assert audio_remove_range_tool.name == "audio_remove_range"

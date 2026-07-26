@@ -134,7 +134,68 @@ class MP4ToMP3Tool:
         return self.run(**kwargs)
 
 
+class AudioRemoveRangeTool:
+    """Remove explicit time ranges from audio or video files.
+
+    Use when the user asks to cut out a section by timestamp, e.g.
+    \"remove 11:53 to 12:43\" from a sermon recording.
+    """
+
+    name = "audio_remove_range"
+    description = (
+        "Remove one or more time ranges from audio or video. "
+        "Times as mm:ss or seconds, e.g. range '11:53-12:43'."
+    )
+    version = "1.0.0"
+
+    def run(
+        self,
+        input_path: str,
+        output_path: str = "",
+        ranges: Optional[list[str]] = None,
+        start: str = "",
+        end: str = "",
+        reencode: bool = False,
+    ) -> dict:
+        """Remove time ranges from a media file.
+
+        Args:
+            input_path: Source file path.
+            output_path: Output path (optional).
+            ranges: List of ranges like ``[\"11:53-12:43\"]`` (repeatable cuts).
+            start: Single-range start if ``ranges`` omitted (use with ``end``).
+            end: Single-range end if ``ranges`` omitted.
+            reencode: Re-encode for cleaner cuts (default: stream copy).
+
+        Returns:
+            Dictionary with output_path, removed_duration, and plan summary.
+        """
+        from .remove_ranges import remove_time_ranges
+
+        cut_ranges = list(ranges or [])
+        if start and end:
+            cut_ranges.append(f"{start}-{end}")
+        if not cut_ranges:
+            raise ValueError("Provide ranges=['11:53-12:43'] or start= and end=")
+
+        result = remove_time_ranges(
+            input_path,
+            cut_ranges,
+            output_path=output_path or None,
+            reencode=reencode,
+            verbose=False,
+        )
+        data = result.to_dict()
+        data["removed_duration"] = result.plan.removed_duration if result.plan else 0.0
+        data["edited_duration"] = result.plan.edited_duration if result.plan else 0.0
+        return data
+
+    def __call__(self, **kwargs) -> Any:
+        return self.run(**kwargs)
+
+
 # Convenience instances
 audio_editor_tool = AudioEditorTool()
 audio_transcribe_tool = AudioTranscribeTool()
 mp4_to_mp3_tool = MP4ToMP3Tool()
+audio_remove_range_tool = AudioRemoveRangeTool()

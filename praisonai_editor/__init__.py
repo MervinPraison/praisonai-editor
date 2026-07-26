@@ -89,6 +89,11 @@ def __getattr__(name):
         "transcript_sidecar_path": ".phrase_trim",
         "evaluate_trim_edges": ".trim_eval",
         "TrimEdgeEvalReport": ".trim_eval",
+        # Time-range removal
+        "remove_time_ranges": ".remove_ranges",
+        "parse_time": ".remove_ranges",
+        "parse_time_range": ".remove_ranges",
+        "build_remove_plan": ".remove_ranges",
     }
 
     if name in _lazy_map:
@@ -129,6 +134,10 @@ __all__ = [
     "transcript_sidecar_path",
     "evaluate_trim_edges",
     "TrimEdgeEvalReport",
+    "remove_time_ranges",
+    "parse_time",
+    "parse_time_range",
+    "build_remove_plan",
     # Implementations
     "FFmpegProber",
     "FFmpegConverter",

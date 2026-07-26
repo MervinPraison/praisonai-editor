@@ -100,7 +100,9 @@ Normalise merged file, then transcribe once.
 
 ## Step 3 — Transcribe
 
-**Full rules (Tamil+English, `--speed 2`, sanity checks):** [sermon-transcribe](../sermon-transcribe/SKILL.md)
+**Full local pipeline (silence cut + normalise + transcribe):** [sermon-transcribe](../sermon-transcribe/SKILL.md) — run **all steps** when user provides audio; this YouTube skill covers download + crop + normalise only.
+
+**Transcribe rules (Tamil+English, `--speed 2`, sanity checks):** [sermon-transcribe](../sermon-transcribe/SKILL.md) Steps 6–10.
 
 Mixed Tamil/English: **omit `--language`**. English-dominant: `--language en`.
 
