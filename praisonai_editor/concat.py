@@ -61,20 +61,25 @@ def concat_audio(
     *,
     reencode: bool = False,
     bitrate: str = "192k",
+    sample_rate: int = 48000,
+    channels: int = 2,
     verbose: bool = False,
 ) -> str:
     """Concatenate audio files into a single output.
 
     With ``reencode=False`` the ffmpeg concat demuxer is used with stream copy —
     fast and lossless, but all inputs must share codec, sample rate and channel
-    layout. With ``reencode=True`` each input is conformed to 48 kHz stereo via
-    the concat filter and re-encoded to AAC, which handles mixed inputs.
+    layout. With ``reencode=True`` each input is conformed to ``sample_rate`` /
+    ``channels`` via the concat filter and re-encoded to AAC, which handles
+    mixed inputs.
 
     Args:
         inputs: Ordered audio files to join (at least one).
         output_path: Destination file path.
         reencode: Re-encode via concat filter instead of stream copy.
         bitrate: AAC bitrate when re-encoding (e.g. "128k", "192k").
+        sample_rate: Target sample rate when re-encoding.
+        channels: Target channel count when re-encoding (1 or 2).
         verbose: Print ffmpeg progress.
 
     Returns:
@@ -82,6 +87,8 @@ def concat_audio(
     """
     if not inputs:
         raise ValueError("At least one input file is required")
+    if channels not in (1, 2):
+        raise ValueError(f"channels must be 1 or 2, got {channels}")
 
     paths = [Path(p) for p in inputs]
     for p in paths:
@@ -99,11 +106,12 @@ def concat_audio(
             cmd += ["-i", str(p)]
 
         n = len(paths)
+        layout = "stereo" if channels == 2 else "mono"
         conform_parts = []
         branch_labels = []
         for i in range(n):
             conform_parts.append(
-                f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo[a{i}]"
+                f"[{i}:a]aformat=sample_rates={sample_rate}:channel_layouts={layout}[a{i}]"
             )
             branch_labels.append(f"[a{i}]")
         filter_complex = (

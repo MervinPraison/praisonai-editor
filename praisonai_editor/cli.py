@@ -55,6 +55,20 @@ def main():
         help="Re-encode via concat filter (needed when inputs have differing codecs/rates)",
     )
     concat_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate when re-encoding")
+    concat_parser.add_argument(
+        "--sample-rate",
+        type=int,
+        default=48000,
+        metavar="HZ",
+        help="Target sample rate when re-encoding (default 48000)",
+    )
+    concat_parser.add_argument(
+        "--channels",
+        type=int,
+        default=2,
+        choices=[1, 2],
+        help="Target channels when re-encoding: 1 mono, 2 stereo (default 2)",
+    )
     concat_parser.add_argument("--verbose", "-v", action="store_true")
     concat_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
@@ -650,6 +664,8 @@ def cmd_concat(args):
         args.output,
         reencode=args.reencode,
         bitrate=args.bitrate,
+        sample_rate=args.sample_rate,
+        channels=args.channels,
         verbose=args.verbose,
     )
 
