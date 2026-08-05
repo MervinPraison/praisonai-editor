@@ -66,6 +66,16 @@ def __getattr__(name):
         # Convert
         "FFmpegConverter": ".convert",
         "convert_media": ".convert",
+        # Concat
+        "concat_audio": ".concat",
+        # Conform
+        "conform_audio": ".conform",
+        # Normalize
+        "measure_volume": ".normalize",
+        "needs_normalization": ".normalize",
+        "optimize_audio_volume": ".normalize",
+        "VolumeStats": ".normalize",
+        "NormalizeResult": ".normalize",
         # Transcribe
         "OpenAITranscriber": ".transcribe",
         "LocalTranscriber": ".transcribe",
@@ -121,6 +131,13 @@ __all__ = [
     # Core functions
     "probe_media",
     "convert_media",
+    "concat_audio",
+    "conform_audio",
+    "measure_volume",
+    "needs_normalization",
+    "optimize_audio_volume",
+    "VolumeStats",
+    "NormalizeResult",
     "transcribe_audio",
     "DEFAULT_OPENAI_TRANSCRIPTION_MODEL",
     "create_edit_plan",

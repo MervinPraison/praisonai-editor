@@ -5,6 +5,8 @@ Usage:
     praisonai-editor transcribe input.mp3 --format srt
     praisonai-editor extract-text transcript.json -o transcript.txt
     praisonai-editor convert input.mp4 --format mp3
+    praisonai-editor concat part1.m4a part2.m4a -o joined.m4a
+    praisonai-editor conform mastered.wav --duration 3540.2
     praisonai-editor normalize input.m4a --in-place
     praisonai-editor probe input.mp3
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
@@ -39,6 +41,54 @@ def main():
     convert_parser.add_argument("--format", "-f", default="mp3", choices=["mp3", "wav", "m4a"],
                                 help="Output format (default: mp3)")
     convert_parser.add_argument("--bitrate", "-b", default="192k", help="Audio bitrate")
+
+    # --- concat ---
+    concat_parser = subparsers.add_parser(
+        "concat",
+        help="Concatenate audio files (stream copy, or --reencode for mixed inputs)",
+    )
+    concat_parser.add_argument("inputs", nargs="+", help="Input audio files, in order")
+    concat_parser.add_argument("--output", "-o", required=True, help="Output file path")
+    concat_parser.add_argument(
+        "--reencode",
+        action="store_true",
+        help="Re-encode via concat filter (needed when inputs have differing codecs/rates)",
+    )
+    concat_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate when re-encoding")
+    concat_parser.add_argument("--verbose", "-v", action="store_true")
+    concat_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    # --- conform ---
+    conform_parser = subparsers.add_parser(
+        "conform",
+        help="Conform mastered audio for splicing (resample, channel layout, exact length)",
+    )
+    conform_parser.add_argument("input", help="Input audio file")
+    conform_parser.add_argument("--output", "-o", help="Output file (default: {stem}_conformed.m4a)")
+    conform_parser.add_argument(
+        "--sample-rate",
+        type=int,
+        default=48000,
+        metavar="HZ",
+        help="Target sample rate (default 48000)",
+    )
+    conform_parser.add_argument(
+        "--channels",
+        type=int,
+        default=2,
+        choices=(1, 2),
+        help="Target channels: 1 mono, 2 stereo (default 2)",
+    )
+    conform_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate")
+    conform_parser.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        metavar="SECS",
+        help="Force EXACT output length (trim if longer, pad silence if shorter)",
+    )
+    conform_parser.add_argument("--verbose", "-v", action="store_true")
+    conform_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
     # --- normalize ---
     norm_parser = subparsers.add_parser(
@@ -526,6 +576,10 @@ def main():
             return cmd_probe(args)
         elif args.command == "convert":
             return cmd_convert(args)
+        elif args.command == "concat":
+            return cmd_concat(args)
+        elif args.command == "conform":
+            return cmd_conform(args)
         elif args.command == "normalize":
             return cmd_normalize(args)
         elif args.command == "transcribe":
@@ -585,6 +639,64 @@ def cmd_convert(args):
 
     result = convert_media(args.input, output, bitrate=args.bitrate)
     print(f"✓ Converted: {result}")
+    return 0
+
+
+def cmd_concat(args):
+    from .concat import concat_audio
+
+    result = concat_audio(
+        args.inputs,
+        args.output,
+        reencode=args.reencode,
+        bitrate=args.bitrate,
+        verbose=args.verbose,
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "inputs": list(args.inputs),
+                    "output_path": result,
+                    "reencode": args.reencode,
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"✓ Concatenated {len(args.inputs)} file(s) → {result}")
+    return 0
+
+
+def cmd_conform(args):
+    from .conform import conform_audio
+
+    result = conform_audio(
+        args.input,
+        args.output,
+        sample_rate=args.sample_rate,
+        channels=args.channels,
+        bitrate=args.bitrate,
+        duration=args.duration,
+        verbose=args.verbose,
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "input": args.input,
+                    "output_path": result,
+                    "sample_rate": args.sample_rate,
+                    "channels": args.channels,
+                    "duration": args.duration,
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"✓ Conformed → {result}")
     return 0
 
 
