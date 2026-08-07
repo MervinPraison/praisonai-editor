@@ -8,6 +8,7 @@ Usage:
     praisonai-editor concat part1.m4a part2.m4a -o joined.m4a
     praisonai-editor conform mastered.wav --duration 3540.2
     praisonai-editor normalize input.m4a --in-place
+    praisonai-editor master input.m4a --preset speech
     praisonai-editor probe input.mp3
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
     praisonai-editor remove talk.mp3 --range 11:53-12:43
@@ -136,6 +137,59 @@ def main():
         help="Normalise when max_volume below this (default -8)",
     )
     norm_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    # --- master ---
+    master_parser = subparsers.add_parser(
+        "master",
+        help="Master audio to a streaming loudness target (two-pass EBU R128 loudnorm)",
+    )
+    master_parser.add_argument("input", help="Input audio file")
+    master_parser.add_argument("--output", "-o", help="Output file (default: {stem}.mastered.m4a)")
+    master_parser.add_argument(
+        "--preset",
+        "-p",
+        default="speech",
+        choices=("speech", "music", "auto"),
+        help="Mastering preset; auto picks speech vs music from measured stats (default speech)",
+    )
+    master_parser.add_argument(
+        "--target-lufs",
+        type=float,
+        default=-14.0,
+        metavar="LUFS",
+        help="Integrated loudness target (default -14, YouTube norm)",
+    )
+    master_parser.add_argument(
+        "--true-peak",
+        type=float,
+        default=-1.5,
+        metavar="DBTP",
+        help="True-peak ceiling in dBTP (default -1.5)",
+    )
+    master_parser.add_argument(
+        "--lra",
+        type=float,
+        default=None,
+        metavar="LU",
+        help="Loudness-range target (default: preset-driven — speech 11, music 15)",
+    )
+    master_parser.add_argument(
+        "--sample-rate",
+        type=int,
+        default=48000,
+        metavar="HZ",
+        help="Output sample rate (default 48000)",
+    )
+    master_parser.add_argument(
+        "--channels",
+        type=int,
+        default=2,
+        choices=(1, 2),
+        help="Output channels: 1 mono, 2 stereo (default 2)",
+    )
+    master_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate")
+    master_parser.add_argument("--verbose", "-v", action="store_true")
+    master_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
     # --- transcribe ---
     trans_parser = subparsers.add_parser("transcribe", help="Transcribe audio/video")
@@ -596,6 +650,8 @@ def main():
             return cmd_conform(args)
         elif args.command == "normalize":
             return cmd_normalize(args)
+        elif args.command == "master":
+            return cmd_master(args)
         elif args.command == "transcribe":
             return cmd_transcribe(args)
         elif args.command == "extract-text":
@@ -753,6 +809,58 @@ def cmd_normalize(args):
             print(f"✓ Normalised → {result.path} (target {result.target_lufs} LUFS)")
         else:
             print(f"✓ Volume OK — no normalisation needed ({result.path})")
+    return 0
+
+
+def cmd_master(args):
+    from .master import master_audio
+
+    result = master_audio(
+        args.input,
+        args.output,
+        preset=args.preset,
+        target_lufs=args.target_lufs,
+        true_peak_db=args.true_peak,
+        lra=args.lra,
+        sample_rate=args.sample_rate,
+        channels=args.channels,
+        bitrate=args.bitrate,
+        verbose=args.verbose,
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "path": result.path,
+                    "preset": result.preset,
+                    "chain": result.chain,
+                    "target_lufs": result.target_lufs,
+                    "true_peak_db": result.true_peak_db,
+                    "normalized": result.normalized,
+                    "stats": {
+                        "input_i": result.stats.input_i,
+                        "input_tp": result.stats.input_tp,
+                        "input_lra": result.stats.input_lra,
+                        "input_thresh": result.stats.input_thresh,
+                        "target_offset": result.stats.target_offset,
+                    },
+                },
+                indent=2,
+            )
+        )
+    else:
+        s = result.stats
+        print(
+            f"input: {s.input_i:.1f} LUFS  peak: {s.input_tp:.1f} dBTP  LRA: {s.input_lra:.1f} LU"
+        )
+        if result.normalized:
+            print(
+                f"✓ Mastered ({result.preset}) → {result.path} "
+                f"(target {result.target_lufs:g} LUFS / {result.true_peak_db:g} dBTP)"
+            )
+        else:
+            print(f"✓ Silent input — transcoded without loudness normalisation → {result.path}")
     return 0
 
 

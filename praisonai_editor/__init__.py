@@ -70,6 +70,12 @@ def __getattr__(name):
         "concat_audio": ".concat",
         # Conform
         "conform_audio": ".conform",
+        # Master
+        "measure_loudness": ".master",
+        "master_audio": ".master",
+        "MASTER_PRESETS": ".master",
+        "LoudnessStats": ".master",
+        "MasterResult": ".master",
         # Normalize
         "measure_volume": ".normalize",
         "needs_normalization": ".normalize",
@@ -133,6 +139,11 @@ __all__ = [
     "convert_media",
     "concat_audio",
     "conform_audio",
+    "measure_loudness",
+    "master_audio",
+    "MASTER_PRESETS",
+    "LoudnessStats",
+    "MasterResult",
     "measure_volume",
     "needs_normalization",
     "optimize_audio_volume",
