@@ -74,6 +74,23 @@ def _fake_run_factory(calls, measure_stderr):
 
     return _fake_run
 
+def _encode_cmd(calls):
+    """The pass-2 encode call.
+
+    Measurement passes end in ``-f null -`` (there can be two: the raw
+    input, then one through the pre-chain so loudnorm's measured_*
+    values describe what it will actually receive). The encode is the
+    call that writes a file.
+    """
+    encodes = [c for c in calls if "-f" not in c or c[c.index("-f") + 1] != "null"]
+    assert encodes, f"no encode call among {len(calls)} ffmpeg calls"
+    return encodes[-1]
+
+
+def _measure_cmds(calls):
+    return [c for c in calls if "-f" in c and c[c.index("-f") + 1] == "null"]
+
+
 
 @pytest.fixture
 def fake_run(monkeypatch):
@@ -185,7 +202,8 @@ class TestMasterAudio:
         assert result.normalized is True
         assert result.stats.input_i == -23.62
 
-        measure_cmd, encode_cmd = fake_run
+        measure_cmd = _measure_cmds(fake_run)[0]
+        encode_cmd = _encode_cmd(fake_run)
         assert "null" in measure_cmd
         assert encode_cmd[0] == "ffmpeg"
         assert "-y" in encode_cmd and "-nostdin" in encode_cmd
@@ -213,7 +231,7 @@ class TestMasterAudio:
             channels=1,
             bitrate="128k",
         )
-        encode_cmd = fake_run[1]
+        encode_cmd = _encode_cmd(fake_run)
         af = encode_cmd[encode_cmd.index("-af") + 1]
         assert af.startswith(MASTER_PRESETS["music"]["pre_chain"][0] + ",")
         assert "loudnorm=I=-16:TP=-2:LRA=15:" in af
@@ -225,13 +243,13 @@ class TestMasterAudio:
     def test_lra_override(self, tmp_path, fake_run):
         src = _make_input(tmp_path)
         master_audio(src, lra=9.0)
-        encode_cmd = fake_run[1]
+        encode_cmd = _encode_cmd(fake_run)
         assert ":LRA=9:" in encode_cmd[encode_cmd.index("-af") + 1]
 
     def test_chain_overrides_preset_pre_chain(self, tmp_path, fake_run):
         src = _make_input(tmp_path)
         result = master_audio(src, chain=["highpass=f=80", "afftdn=nr=12:nf=-25"])
-        af = fake_run[1][fake_run[1].index("-af") + 1]
+        af = _encode_cmd(fake_run)[_encode_cmd(fake_run).index("-af") + 1]
         assert af.startswith("highpass=f=80,afftdn=nr=12:nf=-25,loudnorm=")
         assert "acompressor" not in af
         assert result.chain == af
@@ -239,7 +257,7 @@ class TestMasterAudio:
     def test_empty_chain_is_loudnorm_only(self, tmp_path, fake_run):
         src = _make_input(tmp_path)
         master_audio(src, chain=[])
-        af = fake_run[1][fake_run[1].index("-af") + 1]
+        af = _encode_cmd(fake_run)[_encode_cmd(fake_run).index("-af") + 1]
         assert af.startswith("loudnorm=")
         assert "acompressor" not in af
 
@@ -250,7 +268,7 @@ class TestMasterAudio:
         src = _make_input(tmp_path)
         result = master_audio(src, preset="auto")  # canned LRA 18.06 → music
         assert result.preset == "music"
-        af = calls[1][calls[1].index("-af") + 1]
+        af = _encode_cmd(calls)[_encode_cmd(calls).index("-af") + 1]
         assert af.startswith(MASTER_PRESETS["music"]["pre_chain"][0] + ",")
 
         calls.clear()
@@ -266,7 +284,7 @@ class TestMasterAudio:
         result = master_audio(src)
         assert result.normalized is False
         assert result.chain == "aresample=48000"
-        af = calls[1][calls[1].index("-af") + 1]
+        af = _encode_cmd(calls)[_encode_cmd(calls).index("-af") + 1]
         assert "loudnorm" not in af and "acompressor" not in af
 
     def test_encode_failure_raises(self, tmp_path, monkeypatch):
@@ -401,4 +419,6 @@ def test_integration_sine_masters_to_minus_14_lufs(tmp_path):
     assert result.normalized is True
 
     stats = measure_loudness(result.path)
-    assert abs(stats.input_i - (-14.0)) <= 1.0
+    # measured through the pre-chain, so the output lands ON target
+    # (a raw-input measurement would overshoot by the makeup gain)
+    assert abs(stats.input_i - (-14.0)) <= 0.5

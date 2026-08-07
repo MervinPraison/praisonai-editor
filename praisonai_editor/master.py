@@ -95,9 +95,22 @@ def _parse_loudnorm_json(stderr: str) -> LoudnessStats:
     raise RuntimeError(f"loudnorm measurement parse failed: {stderr[-800:]}")
 
 
-def measure_loudness(path: str, verbose: bool = False) -> LoudnessStats:
-    """Measure integrated loudness / true peak / LRA via a loudnorm analysis pass."""
+def measure_loudness(
+    path: str, verbose: bool = False, pre_chain: list[str] | None = None
+) -> LoudnessStats:
+    """Measure integrated loudness / true peak / LRA via a loudnorm analysis pass.
+
+    ``pre_chain`` must list any filters that will run BEFORE loudnorm in
+    the apply pass. Loudnorm's ``measured_*`` values only produce an
+    on-target result when they describe the very signal loudnorm will
+    receive — measuring the raw input while the apply pass first pushes
+    it through a compressor's makeup gain lands the output above target
+    by exactly that gain.
+    """
     ffmpeg = _find_ffmpeg()
+    analysis = list(pre_chain or []) + [
+        "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json"
+    ]
     cmd = [
         ffmpeg,
         "-hide_banner",
@@ -105,7 +118,7 @@ def measure_loudness(path: str, verbose: bool = False) -> LoudnessStats:
         "-i",
         str(path),
         "-af",
-        "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json",
+        ",".join(analysis),
         "-f",
         "null",
         "-",
@@ -197,7 +210,8 @@ def master_audio(
     out = Path(output_path) if output_path else src.parent / f"{src.stem}.mastered.m4a"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    # Pass 1: measure.
+    # Pass 1: measure the raw input — the stats we report, the silence
+    # test, and the auto-preset decision all describe the source itself.
     stats = measure_loudness(str(src), verbose=verbose)
 
     resolved_preset = _pick_preset(stats) if preset == "auto" else preset
@@ -211,8 +225,23 @@ def master_audio(
         af = f"aresample={sample_rate}"
     else:
         pre_chain = list(chain) if chain is not None else list(spec["pre_chain"])
+        # loudnorm sees the POST-pre-chain signal, so that is what its
+        # measured_* values must describe — otherwise the compressor's
+        # makeup gain rides on top of loudnorm's constant gain and the
+        # output overshoots the target by exactly that much. Re-measure
+        # through the pre-chain (skipped when there is none).
+        apply_stats = (
+            measure_loudness(str(src), verbose=verbose, pre_chain=pre_chain)
+            if pre_chain
+            else stats
+        )
         af = _build_master_filter(
-            pre_chain, stats, target_lufs, true_peak_db, effective_lra, sample_rate
+            pre_chain,
+            apply_stats,
+            target_lufs,
+            true_peak_db,
+            effective_lra,
+            sample_rate,
         )
 
     ffmpeg = _find_ffmpeg()
