@@ -260,6 +260,49 @@ def redo(session_id: str) -> str | None:
         return stack[new_pointer]["path"]
 
 
+def jump_to(session_id: str, index: int) -> str | None:
+    """Move the pointer directly to an arbitrary valid position, in one
+    lock/read/write cycle -- built for Studio's history timeline, where a
+    user can click any past step and jump straight to it, instead of a
+    caller looping ``undo()``/``redo()`` one step at a time (which would
+    multiply lock acquisitions for a long chain, for no real benefit).
+
+    ``index`` follows the same convention as the internal ``pointer``
+    field: ``-1`` jumps to the original ``source_path`` (like ``reset()``,
+    but WITHOUT discarding anything -- the full stack, including any entries
+    past the new pointer, is left intact and still redo-able forward), and
+    ``0`` to ``len(stack) - 1`` jumps to that stack entry (0-indexed,
+    matching each entry's own ``index`` field as returned by ``history()``,
+    so a caller can pass one straight through with no translation).
+
+    Only the pointer moves -- the stack itself is never touched, even when
+    jumping to a position earlier than entries that stay unreachable except
+    via redo/jump; only ``record_edit`` ever truncates, and only relative to
+    wherever the pointer sits at the moment of that new recording.
+
+    Returns the path at the new position (the original ``source_path`` for
+    ``-1``, or ``stack[index]["path"]`` otherwise), or ``None`` if
+    ``session_id`` is unknown OR ``index`` is out of the session's ACTUAL
+    current range ``[-1, len(stack) - 1]`` (read fresh under the lock, not a
+    stale value) -- both are ordinary 'nothing happened' cases for a caller,
+    not errors, matching ``undo``/``redo``'s own "never raises" contract.
+    Jumping to the pointer's current position is a legal no-op that still
+    returns the correct path.
+    """
+    with _session_lock(session_id):
+        journal = _load_journal(session_id)
+        if journal is None:
+            return None
+        stack = journal["stack"]
+        if index < -1 or index > len(stack) - 1:
+            return None
+        journal["pointer"] = index
+        _save_journal(session_id, journal)
+        if index == -1:
+            return journal["source_path"]
+        return stack[index]["path"]
+
+
 def reset(session_id: str) -> str | None:
     """Jump back to the session's original ``source_path``.
 

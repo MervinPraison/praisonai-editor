@@ -14,6 +14,7 @@ from praisonai_editor.session import (
     current_path,
     end_session,
     history,
+    jump_to,
     prune_sessions,
     record_edit,
     redo,
@@ -182,6 +183,127 @@ def test_unknown_session_id_never_raises_for_read_or_step_functions(sessions_hom
     assert reset(unknown) is None
     assert history(unknown) is None
     assert session_exists(unknown) is False
+
+
+# ---------------------------------------------------------------------------
+# jump_to
+# ---------------------------------------------------------------------------
+
+
+def test_jump_to_forward_multiple_steps_keeps_redo_tail_intact(sessions_home, tmp_path):
+    """The key property that distinguishes jump_to from a buggy loop of
+    undo()/redo() calls: jumping straight from near the start to a far
+    entry must leave every entry in between still on the stack, not just
+    the endpoint."""
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    outs = [str(tmp_path / f"out{i}.mp3") for i in range(5)]
+    for i, out in enumerate(outs):
+        record_edit(sid, f"op{i}", {}, out)
+
+    # Step back near the start.
+    undo(sid)
+    undo(sid)
+    undo(sid)
+    undo(sid)
+    assert current_path(sid) == outs[0]
+
+    # Jump forward multiple steps at once, straight to the last entry.
+    assert jump_to(sid, 4) == outs[4]
+    assert current_path(sid) == outs[4]
+
+    # The full stack survived untouched.
+    entries = history(sid)
+    assert [e["path"] for e in entries] == outs
+    assert [e["active"] for e in entries] == [True] * 5
+
+    # And it's still fully undo/redo-able afterward -- nothing was wiped.
+    assert undo(sid) == outs[3]
+    assert redo(sid) == outs[4]
+
+
+def test_jump_to_negative_one_matches_reset_path_but_preserves_history(sessions_home, tmp_path):
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    out1 = str(tmp_path / "out1.mp3")
+    out2 = str(tmp_path / "out2.mp3")
+    record_edit(sid, "op1", {}, out1)
+    record_edit(sid, "op2", {}, out2)
+
+    result = jump_to(sid, -1)
+    assert result == src
+    assert current_path(sid) == src
+
+    # Unlike reset(), the stack is still fully intact and redo-able.
+    entries = history(sid)
+    assert [e["path"] for e in entries] == [out1, out2]
+    assert [e["active"] for e in entries] == [False, False]
+    assert redo(sid) == out1
+    assert redo(sid) == out2
+
+
+def test_jump_to_out_of_range_returns_none(sessions_home, tmp_path):
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    out1 = str(tmp_path / "out1.mp3")
+    record_edit(sid, "op1", {}, out1)
+
+    assert jump_to(sid, 1) is None   # only index 0 exists
+    assert jump_to(sid, -2) is None  # -1 is the floor
+    # Nothing happened -- pointer unchanged.
+    assert current_path(sid) == out1
+
+
+def test_jump_to_unknown_session_returns_none(sessions_home):
+    assert jump_to("totally-unknown-session-id", 0) is None
+
+
+def test_jump_to_current_position_is_a_harmless_noop(sessions_home, tmp_path):
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    out1 = str(tmp_path / "out1.mp3")
+    record_edit(sid, "op1", {}, out1)
+
+    # Already at index 0 -- jumping there again is a no-op, not an error.
+    assert jump_to(sid, 0) == out1
+    assert current_path(sid) == out1
+
+    jump_to(sid, -1)
+    # Already at -1 -- jumping there again is a no-op too.
+    assert jump_to(sid, -1) == src
+    assert current_path(sid) == src
+
+
+def test_concurrent_jump_to_no_corruption(sessions_home, tmp_path):
+    """Multiple threads calling jump_to with different valid indices on the
+    same session at once must never corrupt the journal. The exact final
+    pointer among the racers is inherently nondeterministic (whichever
+    write lands last wins) -- the only hard guarantee this asserts is that
+    the journal stays valid, the pointer always lands on a real position,
+    and the stack itself (jump_to never touches it) is unchanged."""
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    n = 6
+    outs = [str(tmp_path / f"out{i}.mp3") for i in range(n)]
+    for i, out in enumerate(outs):
+        record_edit(sid, f"op{i}", {}, out)
+
+    valid_indices = list(range(-1, n)) * 4  # hammer every valid index repeatedly
+
+    def _jump(idx):
+        return jump_to(sid, idx)
+
+    with ThreadPoolExecutor(max_workers=len(valid_indices)) as pool:
+        results = list(pool.map(_jump, valid_indices))
+
+    # Every call landed on a real position -- none lost to corruption.
+    assert all(r is not None for r in results)
+
+    journal_file = sessions_home / sid / "history.json"
+    raw = json.loads(journal_file.read_text(encoding="utf-8"))
+    assert -1 <= raw["pointer"] < len(raw["stack"])
+    assert len(raw["stack"]) == n  # jump_to never touches the stack
+    assert [e["path"] for e in raw["stack"]] == outs
 
 
 def test_history_reports_active_flag_and_oldest_first(sessions_home, tmp_path):
