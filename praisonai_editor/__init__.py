@@ -82,6 +82,8 @@ def __getattr__(name):
         "optimize_audio_volume": ".normalize",
         "VolumeStats": ".normalize",
         "NormalizeResult": ".normalize",
+        # Denoise
+        "denoise_audio": ".denoise",
         # Transcribe
         "OpenAITranscriber": ".transcribe",
         "LocalTranscriber": ".transcribe",
@@ -164,6 +166,7 @@ __all__ = [
     "optimize_audio_volume",
     "VolumeStats",
     "NormalizeResult",
+    "denoise_audio",
     "transcribe_audio",
     "DEFAULT_OPENAI_TRANSCRIPTION_MODEL",
     "create_edit_plan",

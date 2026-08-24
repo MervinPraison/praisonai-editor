@@ -9,6 +9,7 @@ Usage:
     praisonai-editor conform mastered.wav --duration 3540.2
     praisonai-editor normalize input.m4a --in-place
     praisonai-editor master input.m4a --preset speech
+    praisonai-editor denoise input.m4a --noise-reduction 20
     praisonai-editor probe input.mp3
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
     praisonai-editor remove talk.mp3 --range 11:53-12:43
@@ -253,6 +254,37 @@ def main():
     master_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate")
     master_parser.add_argument("--verbose", "-v", action="store_true")
     master_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    # --- denoise ---
+    denoise_parser = subparsers.add_parser(
+        "denoise",
+        help="Reduce background noise/hiss with ffmpeg's FFT denoiser (afftdn)",
+    )
+    denoise_parser.add_argument("input", help="Input audio file")
+    denoise_parser.add_argument(
+        "--output", "-o", help="Output file (default: {stem}_denoised.m4a)"
+    )
+    denoise_parser.add_argument(
+        "--noise-reduction",
+        type=float,
+        default=12.0,
+        metavar="DB",
+        help="Amount of noise reduction, 0.01-97 (default 12)",
+    )
+    denoise_parser.add_argument(
+        "--noise-floor",
+        type=float,
+        default=-50.0,
+        metavar="DB",
+        help="Expected noise floor, -80 to -20 (default -50)",
+    )
+    denoise_parser.add_argument(
+        "--no-track-noise",
+        action="store_true",
+        help="Disable adapting to noise that changes over the file (default: adapts)",
+    )
+    denoise_parser.add_argument("--verbose", "-v", action="store_true")
+    denoise_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
     # --- transcribe ---
     trans_parser = subparsers.add_parser("transcribe", help="Transcribe audio/video")
@@ -795,6 +827,8 @@ def main():
             return cmd_normalize(args)
         elif args.command == "master":
             return cmd_master(args)
+        elif args.command == "denoise":
+            return cmd_denoise(args)
         elif args.command == "transcribe":
             return cmd_transcribe(args)
         elif args.command == "extract-text":
@@ -1045,6 +1079,25 @@ def cmd_master(args):
             )
         else:
             print(f"✓ Silent input — transcoded without loudness normalisation → {result.path}")
+    return 0
+
+
+def cmd_denoise(args):
+    from .denoise import denoise_audio
+
+    result = denoise_audio(
+        args.input,
+        args.output,
+        noise_reduction=args.noise_reduction,
+        noise_floor=args.noise_floor,
+        track_noise=not args.no_track_noise,
+        verbose=args.verbose,
+    )
+
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        print(f"✓ Denoised → {result.output_path}")
     return 0
 
 
