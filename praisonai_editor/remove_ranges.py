@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import List, Sequence, Tuple, Union
 
-from .models import EditPlan, EditResult, Segment
+from .models import EditPlan, EditResult, Segment, TranscriptResult, Word
 from .plan import _create_keep_segments, _merge_overlapping
 from .probe import probe_media
 from .render import FFmpegAudioRenderer, FFmpegVideoRenderer
@@ -116,6 +116,53 @@ def build_remove_plan(
     )
 
 
+def _retime_transcript(transcript: TranscriptResult, plan: EditPlan) -> TranscriptResult:
+    """Re-time a transcript's words to match a remove-ranges edit plan's
+    compacted output.
+
+    Walks ``transcript.words`` against ``plan.segments`` (already merged/
+    deduplicated by :func:`build_remove_plan`) rather than re-deriving a
+    removed-ranges merge from scratch, so this always agrees with what the
+    renderer actually kept.
+
+    A word survives only if it falls ENTIRELY within a single kept segment
+    (``word.start >= segment.start and word.end <= segment.end``); anything
+    straddling a cut boundary, or entirely inside a removed gap, is dropped
+    (no attempt is made to split a straddling word).
+
+    A surviving word's new start/end is re-expressed against the compacted
+    output timeline: the summed duration of every EARLIER kept segment, plus
+    the word's own offset into its own segment. A word between two removed
+    ranges therefore shifts by only the duration removed BEFORE it, not the
+    total removed duration.
+    """
+    keep_segments = plan.get_keep_segments()
+    retimed_words: List[Word] = []
+    cumulative = 0.0
+    for seg in keep_segments:
+        for word in transcript.words:
+            if word.start >= seg.start and word.end <= seg.end:
+                offset = word.start - seg.start
+                duration = word.end - word.start
+                new_start = cumulative + offset
+                retimed_words.append(
+                    Word(
+                        text=word.text,
+                        start=new_start,
+                        end=new_start + duration,
+                        confidence=word.confidence,
+                    )
+                )
+        cumulative += seg.end - seg.start
+
+    return TranscriptResult(
+        text=" ".join(w.text for w in retimed_words),
+        words=retimed_words,
+        language=transcript.language,
+        duration=plan.edited_duration,
+    )
+
+
 def remove_time_ranges(
     input_path: str,
     remove_ranges: Sequence[RangeSpec],
@@ -123,6 +170,7 @@ def remove_time_ranges(
     *,
     reencode: bool = False,
     verbose: bool = False,
+    transcript: TranscriptResult | None = None,
 ) -> EditResult:
     """Remove one or more time ranges from a media file.
 
@@ -132,6 +180,12 @@ def remove_time_ranges(
         output_path: Destination path (default: ``{stem}_cut{ext}``).
         reencode: Re-encode instead of stream copy (slower, cleaner cuts).
         verbose: Print ffmpeg progress.
+        transcript: An optional transcript that was synced to ``input_path``.
+            When given, the returned :class:`EditResult`'s ``transcript`` is
+            this same transcript RE-TIMED to match the cut output (words
+            inside a removed range dropped, later words shifted) rather than
+            merely passed through unchanged. When omitted, the returned
+            ``transcript`` is ``None`` (matches every existing caller).
 
     Returns:
         :class:`EditResult` with output path and edit plan.
@@ -155,10 +209,13 @@ def remove_time_ranges(
         verbose=verbose,
     )
 
+    retimed_transcript = _retime_transcript(transcript, plan) if transcript is not None else None
+
     return EditResult(
         input_path=input_path,
         output_path=rendered,
         probe=probe,
+        transcript=retimed_transcript,
         plan=plan,
         success=True,
     )
