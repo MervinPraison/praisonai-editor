@@ -19,6 +19,7 @@ Usage:
     praisonai-editor session history <session-id>
     praisonai-editor session reset <session-id>
     praisonai-editor session end <session-id>
+    praisonai-editor session prune --max-age-seconds 604800
 """
 
 import argparse
@@ -677,6 +678,19 @@ def main():
     session_end_parser.add_argument("session_id", help="Session id")
     session_end_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
+    session_prune_parser = session_sub.add_parser(
+        "prune", help="Delete abandoned sessions untouched for longer than --max-age-seconds"
+    )
+    session_prune_parser.add_argument(
+        "--max-age-seconds",
+        dest="max_age_seconds",
+        type=float,
+        default=None,
+        metavar="SECS",
+        help="Prune sessions untouched for longer than this (default: 7 days)",
+    )
+    session_prune_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1228,7 +1242,7 @@ def cmd_edit(args):
 def cmd_session(args):
     if not getattr(args, "session_command", None):
         print(
-            "Error: specify a session command (start, undo, redo, reset, history, end)",
+            "Error: specify a session command (start, undo, redo, reset, history, end, prune)",
             file=sys.stderr,
         )
         return 1
@@ -1245,6 +1259,8 @@ def cmd_session(args):
         return cmd_session_history(args)
     elif args.session_command == "end":
         return cmd_session_end(args)
+    elif args.session_command == "prune":
+        return cmd_session_prune(args)
 
     print(f"Error: unknown session command: {args.session_command}", file=sys.stderr)
     return 1
@@ -1367,6 +1383,20 @@ def cmd_session_end(args):
         print(f"✓ Session ended: {args.session_id}")
     else:
         print(f"Session already gone: {args.session_id}")
+    return 0
+
+
+def cmd_session_prune(args):
+    from .session import DEFAULT_SESSION_MAX_AGE_SECONDS, prune_sessions
+
+    max_age = args.max_age_seconds
+    removed = prune_sessions(max_age_seconds=max_age)
+    effective_max_age = DEFAULT_SESSION_MAX_AGE_SECONDS if max_age is None else max_age
+
+    if args.json:
+        print(json.dumps({"removed": removed, "max_age_seconds": effective_max_age}, indent=2))
+    else:
+        print(f"✓ Pruned {removed} abandoned session(s) untouched for over {effective_max_age:g}s")
     return 0
 
 

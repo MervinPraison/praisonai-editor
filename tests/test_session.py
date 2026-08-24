@@ -1,14 +1,20 @@
 """Tests for the undo/redo edit-session journal."""
 
 import json
+import multiprocessing
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 import praisonai_editor.session as session_mod
 from praisonai_editor.session import (
+    DEFAULT_SESSION_MAX_AGE_SECONDS,
     current_path,
     end_session,
     history,
+    prune_sessions,
     record_edit,
     redo,
     reset,
@@ -235,3 +241,189 @@ def test_journal_persists_across_separate_calls_from_disk(sessions_home, tmp_pat
     assert raw2["pointer"] == 1
     assert raw2["stack"][1]["path"] == out2
     assert current_path(sid) == out2
+
+
+# ---------------------------------------------------------------------------
+# Atomic writes
+# ---------------------------------------------------------------------------
+
+
+def test_save_journal_writes_atomically_no_tmp_files_left_behind(sessions_home, tmp_path):
+    """_save_journal must write via temp-file-then-os.replace(), the same
+    convention Studio's modules/audio_ai_jobs.write_status and
+    modules/video_jobs.py's equivalent already use, so a reader can never
+    open the journal mid-write and see a truncated/partial file. Prove no
+    stray .tmp file is left in the session directory after normal writes,
+    and that the only other file present is the lock file record_edit takes
+    (see _session_lock)."""
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src, session_id="atomic-check")
+    record_edit(sid, "op1", {}, str(tmp_path / "out1.mp3"))
+    undo(sid)
+    redo(sid)
+
+    session_dir = sessions_home / sid
+    names = {p.name for p in session_dir.iterdir()}
+    assert "history.json" in names
+    assert not any(n.endswith(".tmp") for n in names)
+    assert names <= {"history.json", ".lock"}
+
+    # And the content itself must always be valid, complete JSON.
+    raw = json.loads((session_dir / "history.json").read_text(encoding="utf-8"))
+    assert raw["source_path"] == src
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: record_edit/undo/redo/reset must not lose updates
+# ---------------------------------------------------------------------------
+
+
+def _mp_worker_record_edit(root, session_id, idx):
+    """Top-level (picklable) target for the multiprocessing concurrency test
+    below. Reimports the session module fresh in the child process and
+    points it at the same isolated sessions root via direct attribute
+    assignment -- pytest's monkeypatch fixture only patches within the
+    parent process, so a spawned child must be repointed independently."""
+    import praisonai_editor.session as child_session_mod
+
+    child_session_mod._sessions_root = lambda: root
+    child_session_mod.record_edit(session_id, f"op{idx}", {"idx": idx}, f"/tmp/out{idx}.mp3")
+
+
+def test_concurrent_record_edit_via_threads_no_lost_updates(sessions_home, tmp_path):
+    """Studio's worker calls record_edit() from a background process while a
+    user can simultaneously click Undo/Redo/Reset from a separate Flask
+    request -- both read-modify-write the same journal file with no other
+    coordination. Prove the locking added to record_edit actually serializes
+    those writes: hammer record_edit from many threads at once (I/O in
+    _save_journal releases the GIL, so without real locking this can and
+    does interleave) and confirm the final journal has exactly one entry per
+    successful call, with unique, contiguous indices -- not a corrupted file
+    and not a lost update."""
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    n = 25
+
+    def _record(i):
+        record_edit(sid, f"op{i}", {"i": i}, str(tmp_path / f"out{i}.mp3"))
+
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        list(pool.map(_record, range(n)))
+
+    entries = history(sid)
+    assert len(entries) == n
+    assert sorted(e["index"] for e in entries) == list(range(n))
+
+    journal_file = sessions_home / sid / "history.json"
+    raw = json.loads(journal_file.read_text(encoding="utf-8"))
+    assert len(raw["stack"]) == n
+    assert raw["pointer"] == n - 1
+
+
+def test_concurrent_record_edit_via_processes_no_lost_updates(sessions_home, tmp_path):
+    """Same guarantee as the threaded test above, but with real OS
+    processes -- the actual shape of the production race (a background
+    worker process vs a Flask request process), not just threads sharing one
+    interpreter."""
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src, session_id="mp-session")
+    n = 12
+
+    procs = [
+        multiprocessing.Process(target=_mp_worker_record_edit, args=(sessions_home, sid, i))
+        for i in range(n)
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join(timeout=60)
+        assert p.exitcode == 0
+
+    entries = history(sid)
+    assert len(entries) == n
+    assert sorted(e["index"] for e in entries) == list(range(n))
+
+    journal_file = sessions_home / sid / "history.json"
+    raw = json.loads(journal_file.read_text(encoding="utf-8"))
+    assert len(raw["stack"]) == n
+    assert raw["pointer"] == n - 1
+
+
+def test_concurrent_undo_and_record_edit_stay_consistent(sessions_home, tmp_path):
+    """A mixed race -- some threads recording new edits while others undo --
+    must never corrupt the journal, even though the two operations are
+    fighting over the same pointer. The only hard guarantee this asserts is
+    the one that matters: the journal stays valid JSON with a self-consistent
+    pointer/stack, and record_edit's own return values were never silently
+    dropped (each entry index handed back was actually written)."""
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    # Seed a few edits so there is something to undo concurrently with.
+    for i in range(5):
+        record_edit(sid, f"seed{i}", {}, str(tmp_path / f"seed{i}.mp3"))
+
+    def _record(i):
+        return record_edit(sid, f"op{i}", {}, str(tmp_path / f"out{i}.mp3"))["index"]
+
+    def _undo(_i):
+        undo(sid)
+        return None
+
+    tasks = [_record] * 15 + [_undo] * 15
+    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+        results = list(pool.map(lambda pair: pair[0](pair[1]), zip(tasks, range(len(tasks)))))
+
+    recorded_indices = [r for r in results if r is not None]
+    assert len(recorded_indices) == 15
+
+    journal_file = sessions_home / sid / "history.json"
+    raw = json.loads(journal_file.read_text(encoding="utf-8"))
+    # Valid, self-consistent journal: pointer always points at a real slot
+    # (or -1), and every recorded index actually made it into the stack.
+    assert -1 <= raw["pointer"] < len(raw["stack"])
+    stack_indices = {e["index"] for e in raw["stack"]}
+    for idx in recorded_indices:
+        assert idx in stack_indices
+
+
+# ---------------------------------------------------------------------------
+# prune_sessions
+# ---------------------------------------------------------------------------
+
+
+def test_prune_sessions_removes_stale_and_keeps_recent(sessions_home, tmp_path):
+    src = str(tmp_path / "src.mp3")
+    old_sid = start_session(src, session_id="old-session")
+    new_sid = start_session(src, session_id="new-session")
+
+    # Backdate the old session's journal mtime past the retention window.
+    old_journal = sessions_home / old_sid / "history.json"
+    old_time = time.time() - 1000
+    os.utime(old_journal, (old_time, old_time))
+
+    removed = prune_sessions(max_age_seconds=500)
+    assert removed == 1
+    assert session_exists(old_sid) is False
+    assert session_exists(new_sid) is True
+
+
+def test_prune_sessions_never_touches_a_recently_touched_session(sessions_home, tmp_path):
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    removed = prune_sessions(max_age_seconds=DEFAULT_SESSION_MAX_AGE_SECONDS)
+    assert removed == 0
+    assert session_exists(sid) is True
+
+
+def test_prune_sessions_uses_default_max_age_when_none_given(sessions_home, tmp_path):
+    src = str(tmp_path / "src.mp3")
+    sid = start_session(src)
+    # Default retention is a week -- a brand new session must survive it.
+    assert prune_sessions(max_age_seconds=None) == 0
+    assert session_exists(sid) is True
+
+
+def test_prune_sessions_on_missing_root_is_a_noop(tmp_path, monkeypatch):
+    missing_root = tmp_path / "does-not-exist"
+    monkeypatch.setattr(session_mod, "_sessions_root", lambda: missing_root)
+    assert prune_sessions(max_age_seconds=1) == 0

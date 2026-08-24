@@ -37,12 +37,23 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
+import os
 import shutil
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+#: Default for ``prune_sessions()``'s ``max_age_seconds`` -- one week. A
+#: session is created the moment a caller picks a source file (e.g. Studio's
+#: AI Edit panel, see modules/audio_ai_editor.py) and nothing ever calls
+#: ``end_session()`` automatically, so an abandoned session (browser reload,
+#: closed tab) otherwise lives on this journal forever.
+DEFAULT_SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
 
 
 def _sessions_root() -> Path:
@@ -58,8 +69,51 @@ def _session_file(session_id: str) -> Path:
     return _session_dir(session_id) / "history.json"
 
 
+def _lock_file(session_id: str) -> Path:
+    return _session_dir(session_id) / ".lock"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+@contextlib.contextmanager
+def _session_lock(session_id: str) -> Iterator[None]:
+    """Hold an exclusive, BLOCKING lock scoped to one session's journal for
+    the duration of a read-modify-write op (``record_edit``/``undo``/
+    ``redo``/``reset``).
+
+    Studio's worker (deploy/studio_audio_worker.py) calls ``record_edit()``
+    from a background process while a user can simultaneously click Undo/
+    Redo/Reset from the browser (a separate Flask request/process) -- both
+    read-modify-write the same journal file with no other coordination, so
+    without this a write from one can silently clobber the other's change
+    (lost update).
+
+    Unlike deploy/studio_audio_worker.py's own ``acquire_lock()``
+    (``LOCK_EX | LOCK_NB``, designed to skip a whole worker invocation if
+    busy), this BLOCKS: callers wait their turn rather than silently no-op,
+    since a lost undo click is worse than a slightly delayed one.
+
+    If the session directory does not exist yet, there is nothing on disk to
+    race over -- skip locking (and creating anything) so a call against a
+    never-started session_id still cleanly hits ``_load_journal() is None``
+    and raises/returns exactly as before, with no directory left behind.
+    """
+    session_dir = _session_dir(session_id)
+    if not session_dir.is_dir():
+        yield
+        return
+    lock_path = _lock_file(session_id)
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    finally:
+        fh.close()
 
 
 def _load_journal(session_id: str) -> dict[str, Any] | None:
@@ -79,7 +133,17 @@ def _load_journal(session_id: str) -> dict[str, Any] | None:
 def _save_journal(session_id: str, journal: dict[str, Any]) -> None:
     journal_file = _session_file(session_id)
     journal_file.parent.mkdir(parents=True, exist_ok=True)
-    journal_file.write_text(json.dumps(journal, indent=2), encoding="utf-8")
+    # Write-to-temp-then-os.replace(), same convention as every other piece
+    # of persistent state in this codebase (Studio's modules/audio_ai_jobs.py
+    # write_status, modules/video_jobs.py's equivalent): a reader must never
+    # be able to open the journal mid-write and see a truncated/partial
+    # file. The temp name is unique per writer (pid + a random suffix), not
+    # a shared `history.json.tmp` -- two concurrent writers sharing one tmp
+    # name could interleave their JSON into the same file before either
+    # calls os.replace(), corrupting both.
+    tmp_file = journal_file.parent / f"{journal_file.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
+    tmp_file.write_text(json.dumps(journal, indent=2), encoding="utf-8")
+    os.replace(tmp_file, journal_file)
 
 
 def start_session(source_path: str, session_id: str | None = None) -> str:
@@ -112,25 +176,26 @@ def record_edit(session_id: str, operation: str, params: dict, output_path: str)
             no-op-ing a lost edit would be a real correctness bug for a
             caller.
     """
-    journal = _load_journal(session_id)
-    if journal is None:
-        raise FileNotFoundError(session_id)
+    with _session_lock(session_id):
+        journal = _load_journal(session_id)
+        if journal is None:
+            raise FileNotFoundError(session_id)
 
-    pointer = journal["pointer"]
-    stack = journal["stack"][: pointer + 1]  # discard abandoned redo tail
+        pointer = journal["pointer"]
+        stack = journal["stack"][: pointer + 1]  # discard abandoned redo tail
 
-    entry = {
-        "index": len(stack),
-        "operation": operation,
-        "params": dict(params),
-        "path": output_path,
-        "timestamp": _now_iso(),
-    }
-    stack.append(entry)
-    journal["stack"] = stack
-    journal["pointer"] = entry["index"]
-    _save_journal(session_id, journal)
-    return dict(entry)
+        entry = {
+            "index": len(stack),
+            "operation": operation,
+            "params": dict(params),
+            "path": output_path,
+            "timestamp": _now_iso(),
+        }
+        stack.append(entry)
+        journal["stack"] = stack
+        journal["pointer"] = entry["index"]
+        _save_journal(session_id, journal)
+        return dict(entry)
 
 
 def current_path(session_id: str) -> str | None:
@@ -160,18 +225,19 @@ def undo(session_id: str) -> str | None:
     (both are ordinary 'nothing happened' cases for a caller, not errors —
     this never raises for either).
     """
-    journal = _load_journal(session_id)
-    if journal is None:
-        return None
-    pointer = journal["pointer"]
-    if pointer == -1:
-        return None
-    new_pointer = pointer - 1
-    journal["pointer"] = new_pointer
-    _save_journal(session_id, journal)
-    if new_pointer == -1:
-        return journal["source_path"]
-    return journal["stack"][new_pointer]["path"]
+    with _session_lock(session_id):
+        journal = _load_journal(session_id)
+        if journal is None:
+            return None
+        pointer = journal["pointer"]
+        if pointer == -1:
+            return None
+        new_pointer = pointer - 1
+        journal["pointer"] = new_pointer
+        _save_journal(session_id, journal)
+        if new_pointer == -1:
+            return journal["source_path"]
+        return journal["stack"][new_pointer]["path"]
 
 
 def redo(session_id: str) -> str | None:
@@ -180,17 +246,18 @@ def redo(session_id: str) -> str | None:
     Returns its path, or ``None`` if there is nothing to redo or
     ``session_id`` is unknown.
     """
-    journal = _load_journal(session_id)
-    if journal is None:
-        return None
-    pointer = journal["pointer"]
-    stack = journal["stack"]
-    if pointer + 1 >= len(stack):
-        return None
-    new_pointer = pointer + 1
-    journal["pointer"] = new_pointer
-    _save_journal(session_id, journal)
-    return stack[new_pointer]["path"]
+    with _session_lock(session_id):
+        journal = _load_journal(session_id)
+        if journal is None:
+            return None
+        pointer = journal["pointer"]
+        stack = journal["stack"]
+        if pointer + 1 >= len(stack):
+            return None
+        new_pointer = pointer + 1
+        journal["pointer"] = new_pointer
+        _save_journal(session_id, journal)
+        return stack[new_pointer]["path"]
 
 
 def reset(session_id: str) -> str | None:
@@ -202,13 +269,14 @@ def reset(session_id: str) -> str | None:
     history entries pointed to — this is pure bookkeeping, callers own
     file lifecycle.
     """
-    journal = _load_journal(session_id)
-    if journal is None:
-        return None
-    journal["stack"] = []
-    journal["pointer"] = -1
-    _save_journal(session_id, journal)
-    return journal["source_path"]
+    with _session_lock(session_id):
+        journal = _load_journal(session_id)
+        if journal is None:
+            return None
+        journal["stack"] = []
+        journal["pointer"] = -1
+        _save_journal(session_id, journal)
+        return journal["source_path"]
 
 
 def history(session_id: str) -> list[dict] | None:
@@ -245,3 +313,57 @@ def end_session(session_id: str) -> bool:
     if existed:
         shutil.rmtree(session_dir, ignore_errors=True)
     return existed
+
+
+def prune_sessions(max_age_seconds: float | None = None) -> int:
+    """Delete on-disk session directories whose journal hasn't been touched
+    in over ``max_age_seconds`` (default ``DEFAULT_SESSION_MAX_AGE_SECONDS``,
+    one week).
+
+    Mirrors modules/audio_ai_jobs.py's ``JOB_RETENTION``/``prune_jobs()``
+    pattern in spirit, but time-based rather than count-based: a session has
+    no natural "queue length" the way a job store does (see that module's
+    docstring) -- an abandoned session left by a closed browser tab or a
+    page reload (nothing ever calls ``end_session()`` for those) can just as
+    easily sit for five minutes as five weeks, and count-based retention
+    would prune a session someone is actively mid-edit on just because
+    enough OTHER sessions were created meanwhile.
+
+    "Live" here means recently touched: a session younger than
+    ``max_age_seconds`` (by its journal file's mtime, updated by every
+    ``record_edit``/``undo``/``redo``/``reset``/``start_session`` call) is
+    never pruned, the equivalent of ``prune_jobs()`` never touching a queued
+    or running job. Does not touch any output files a session's entries
+    pointed to -- this module never touches media bytes (see the module
+    docstring); a pruned session simply becomes unresolvable by its old id.
+
+    Returns how many session directories were removed. A missing sessions
+    root (nothing ever started) is not an error -- just nothing to prune.
+    """
+    root = _sessions_root()
+    if not root.is_dir():
+        return 0
+    if max_age_seconds is None:
+        max_age_seconds = DEFAULT_SESSION_MAX_AGE_SECONDS
+
+    now = time.time()
+    removed = 0
+    for entry in root.iterdir():
+        if not entry.is_dir():
+            continue
+        journal_file = entry / "history.json"
+        try:
+            mtime = journal_file.stat().st_mtime
+        except OSError:
+            # No readable journal (e.g. a stray/incomplete directory) --
+            # fall back to the directory's own mtime rather than skipping it
+            # forever.
+            try:
+                mtime = entry.stat().st_mtime
+            except OSError:
+                continue
+        if now - mtime <= max_age_seconds:
+            continue
+        shutil.rmtree(entry, ignore_errors=True)
+        removed += 1
+    return removed
