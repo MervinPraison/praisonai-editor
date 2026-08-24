@@ -500,12 +500,26 @@ def test_concurrent_undo_and_record_edit_stay_consistent(sessions_home, tmp_path
 
     journal_file = sessions_home / sid / "history.json"
     raw = json.loads(journal_file.read_text(encoding="utf-8"))
-    # Valid, self-consistent journal: pointer always points at a real slot
-    # (or -1), and every recorded index actually made it into the stack.
+    # The ONLY hard guarantee under a real mixed record+undo race: the
+    # journal stays valid, self-consistent JSON -- pointer always points at
+    # a real slot (or -1), and its own stack entries are correctly
+    # 0..len(stack)-1 indexed with no gaps/duplicates from a torn write.
+    #
+    # This intentionally does NOT assert that every recorded index survived
+    # into the final stack (an earlier version of this test did, and it was
+    # itself the bug: flaky roughly 1-in-4 runs, not because locking is
+    # unsound, but because the assertion encoded an invariant that isn't
+    # actually true. record_edit's own documented semantics TRUNCATE
+    # whatever redo tail sits past the current pointer -- if thread A's
+    # record_edit legitimately lands at index 10, and an undo() from another
+    # thread then moves the pointer back to 5 before thread B's record_edit
+    # runs, thread B's call correctly truncates index 10 away. That's
+    # correct, intentional undo/redo behavior working exactly as designed,
+    # not corruption -- asserting "index 10 must still be in stack_indices"
+    # was asserting a specific, unguaranteed thread interleaving.
     assert -1 <= raw["pointer"] < len(raw["stack"])
-    stack_indices = {e["index"] for e in raw["stack"]}
-    for idx in recorded_indices:
-        assert idx in stack_indices
+    stack_indices = sorted(e["index"] for e in raw["stack"])
+    assert stack_indices == list(range(len(raw["stack"])))
 
 
 # ---------------------------------------------------------------------------

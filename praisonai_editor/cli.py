@@ -13,13 +13,16 @@ Usage:
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
     praisonai-editor remove talk.mp3 --range 11:53-12:43
     praisonai-editor eval trimmed.mp3 --head-contains "..." --tail-forbid "..."
+    praisonai-editor demix talk.mp3 --vocals-output vocals.wav --instruments-output inst.wav
     praisonai-editor session start talk.mp3
     praisonai-editor session undo <session-id>
     praisonai-editor session redo <session-id>
+    praisonai-editor session jump <session-id> -1
     praisonai-editor session history <session-id>
     praisonai-editor session reset <session-id>
     praisonai-editor session end <session-id>
     praisonai-editor session prune --max-age-seconds 604800
+    praisonai-editor apply plan.yaml
 """
 
 import argparse
@@ -46,8 +49,11 @@ def main():
     convert_parser = subparsers.add_parser("convert", help="Convert media format")
     convert_parser.add_argument("input", help="Input media file")
     convert_parser.add_argument("--output", "-o", help="Output file path")
-    convert_parser.add_argument("--format", "-f", default="mp3", choices=["mp3", "wav", "m4a"],
-                                help="Output format (default: mp3)")
+    convert_parser.add_argument(
+        "--format", "-f", default="mp3",
+        choices=["mp3", "wav", "m4a", "aac", "ogg", "flac"],
+        help="Output format (default: mp3)",
+    )
     convert_parser.add_argument("--bitrate", "-b", default="192k", help="Audio bitrate")
 
     # --- concat ---
@@ -112,6 +118,35 @@ def main():
     conform_parser.add_argument("--verbose", "-v", action="store_true")
     conform_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
+    # --- demix ---
+    demix_parser = subparsers.add_parser(
+        "demix",
+        help="Isolate vocals from instruments (Demucs stem separation)",
+    )
+    demix_parser.add_argument("input", help="Input media file")
+    demix_parser.add_argument(
+        "--vocals-output",
+        dest="vocals_output",
+        help="Output path for the vocals stem (default: {stem}.vocals.wav)",
+    )
+    demix_parser.add_argument(
+        "--instruments-output",
+        dest="instruments_output",
+        help="Output path for the instruments stem (default: {stem}.instruments.wav)",
+    )
+    demix_parser.add_argument(
+        "--model",
+        default="mdx_extra",
+        help="Demucs model name (default: mdx_extra)",
+    )
+    demix_parser.add_argument(
+        "--device",
+        default="cpu",
+        help="Torch device: cpu (default, safe everywhere) or mps (Apple Silicon GPU)",
+    )
+    demix_parser.add_argument("--verbose", "-v", action="store_true")
+    demix_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
     # --- normalize ---
     norm_parser = subparsers.add_parser(
         "normalize",
@@ -142,6 +177,27 @@ def main():
         default=-8.0,
         metavar="DB",
         help="Normalise when max_volume below this (default -8)",
+    )
+    norm_parser.add_argument(
+        "--target-lufs",
+        type=float,
+        default=-16.0,
+        metavar="LUFS",
+        help="Integrated loudness target (default -16)",
+    )
+    norm_parser.add_argument(
+        "--true-peak",
+        type=float,
+        default=-1.5,
+        metavar="DBTP",
+        help="True-peak ceiling in dBTP (default -1.5)",
+    )
+    norm_parser.add_argument(
+        "--lra",
+        type=float,
+        default=11.0,
+        metavar="LU",
+        help="Loudness-range target (default 11)",
     )
     norm_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
@@ -670,6 +726,20 @@ def main():
     session_reset_parser.add_argument("session_id", help="Session id")
     session_reset_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
+    session_jump_parser = session_sub.add_parser(
+        "jump", help="Jump directly to an arbitrary point in history (no stack loss)"
+    )
+    session_jump_parser.add_argument("session_id", help="Session id")
+    session_jump_parser.add_argument(
+        "index",
+        type=int,
+        help=(
+            "Target position: -1 for the original source, 0..N-1 for a history "
+            "entry (0-indexed, matching each entry's own 'index' from history)"
+        ),
+    )
+    session_jump_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
     session_history_parser = session_sub.add_parser("history", help="List all recorded edits")
     session_history_parser.add_argument("session_id", help="Session id")
     session_history_parser.add_argument("--json", action="store_true", help="Print result as JSON")
@@ -691,6 +761,19 @@ def main():
     )
     session_prune_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
+    # --- apply (YAML plan runner) ---
+    apply_parser = subparsers.add_parser(
+        "apply",
+        help="Run a YAML-declared sequence of edits (source/steps/output)",
+    )
+    apply_parser.add_argument("plan", help="Path to a YAML plan file")
+    apply_parser.add_argument(
+        "--no-session",
+        action="store_true",
+        help="Do not create/record a session journal for this run (overrides session.record_history)",
+    )
+    apply_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -702,6 +785,8 @@ def main():
             return cmd_probe(args)
         elif args.command == "convert":
             return cmd_convert(args)
+        elif args.command == "demix":
+            return cmd_demix(args)
         elif args.command == "concat":
             return cmd_concat(args)
         elif args.command == "conform":
@@ -726,6 +811,8 @@ def main():
             return cmd_eval(args)
         elif args.command == "session":
             return cmd_session(args)
+        elif args.command == "apply":
+            return cmd_apply(args)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -769,6 +856,40 @@ def cmd_convert(args):
 
     result = convert_media(args.input, output, bitrate=args.bitrate)
     print(f"✓ Converted: {result}")
+    return 0
+
+
+def cmd_demix(args):
+    import shutil as _shutil
+
+    from ._demix import isolate_vocals
+
+    p = Path(args.input)
+    vocals_output = args.vocals_output or str(p.with_name(f"{p.stem}.vocals.wav"))
+    instruments_output = args.instruments_output or str(p.with_name(f"{p.stem}.instruments.wav"))
+
+    vocals_path, instruments_path = isolate_vocals(
+        args.input,
+        model_name=args.model,
+        device=args.device,
+        verbose=args.verbose,
+    )
+
+    Path(vocals_output).parent.mkdir(parents=True, exist_ok=True)
+    Path(instruments_output).parent.mkdir(parents=True, exist_ok=True)
+    _shutil.copyfile(vocals_path, vocals_output)
+    _shutil.copyfile(instruments_path, instruments_output)
+
+    if args.json:
+        print(
+            json.dumps(
+                {"vocals_output": vocals_output, "instruments_output": instruments_output},
+                indent=2,
+            )
+        )
+    else:
+        print(f"✓ Vocals → {vocals_output}")
+        print(f"✓ Instruments → {instruments_output}")
     return 0
 
 
@@ -847,6 +968,9 @@ def cmd_normalize(args):
         force=args.force,
         mean_threshold=args.mean_threshold,
         max_threshold=args.max_threshold,
+        target_lufs=args.target_lufs,
+        true_peak_db=args.true_peak,
+        lra=args.lra,
     )
 
     if args.json:
@@ -1242,7 +1366,7 @@ def cmd_edit(args):
 def cmd_session(args):
     if not getattr(args, "session_command", None):
         print(
-            "Error: specify a session command (start, undo, redo, reset, history, end, prune)",
+            "Error: specify a session command (start, undo, redo, reset, jump, history, end, prune)",
             file=sys.stderr,
         )
         return 1
@@ -1255,6 +1379,8 @@ def cmd_session(args):
         return cmd_session_redo(args)
     elif args.session_command == "reset":
         return cmd_session_reset(args)
+    elif args.session_command == "jump":
+        return cmd_session_jump(args)
     elif args.session_command == "history":
         return cmd_session_history(args)
     elif args.session_command == "end":
@@ -1341,6 +1467,30 @@ def cmd_session_reset(args):
     return 0
 
 
+def cmd_session_jump(args):
+    from .session import jump_to, session_exists
+
+    if not session_exists(args.session_id):
+        print(f"Unknown session: {args.session_id}", file=sys.stderr)
+        return 1
+
+    path = jump_to(args.session_id, args.index)
+    if path is None:
+        print("Nothing to jump to.")
+        return 0
+
+    if args.json:
+        print(
+            json.dumps(
+                {"session_id": args.session_id, "index": args.index, "path": path},
+                indent=2,
+            )
+        )
+    else:
+        print(f"✓ Jumped to: {path}")
+    return 0
+
+
 def cmd_session_history(args):
     from .session import current_path, history, session_exists
 
@@ -1397,6 +1547,25 @@ def cmd_session_prune(args):
         print(json.dumps({"removed": removed, "max_age_seconds": effective_max_age}, indent=2))
     else:
         print(f"✓ Pruned {removed} abandoned session(s) untouched for over {effective_max_age:g}s")
+    return 0
+
+
+def cmd_apply(args):
+    from .yaml_plan import run_plan
+
+    result = run_plan(args.plan, no_session=args.no_session)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        for step in result["steps"]:
+            detail = ", ".join(
+                f"{k}={v}" for k, v in step.items() if k not in ("index", "op")
+            )
+            print(f"✓ [{step['index']}] {step['op']}" + (f" ({detail})" if detail else ""))
+        if result.get("session_id"):
+            print(f"Session: {result['session_id']}")
+        print(f"✓ Applied {len(result['steps'])} step(s) → {result['output_path']}")
     return 0
 
 

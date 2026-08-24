@@ -117,9 +117,14 @@ def __getattr__(name):
         "undo": ".session",
         "redo": ".session",
         "reset": ".session",
+        "jump_to": ".session",
         "history": ".session",
         "session_exists": ".session",
         "end_session": ".session",
+        "prune_sessions": ".session",
+        # YAML plan runner
+        "load_plan": ".yaml_plan",
+        "run_plan": ".yaml_plan",
     }
 
     if name in _lazy_map:
@@ -183,9 +188,14 @@ __all__ = [
     "undo",
     "redo",
     "reset",
+    "jump_to",
     "history",
     "session_exists",
     "end_session",
+    "prune_sessions",
+    # YAML plan runner
+    "load_plan",
+    "run_plan",
     # Implementations
     "FFmpegProber",
     "FFmpegConverter",

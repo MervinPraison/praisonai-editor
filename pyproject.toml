@@ -25,6 +25,7 @@ dependencies = [
     "openai>=2.0.0",
     "praisonaiagents>=0.0.1",
     "librosa>=0.10.0",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
