@@ -110,6 +110,16 @@ def __getattr__(name):
         "parse_time": ".remove_ranges",
         "parse_time_range": ".remove_ranges",
         "build_remove_plan": ".remove_ranges",
+        # Session (undo/redo edit history)
+        "start_session": ".session",
+        "record_edit": ".session",
+        "current_path": ".session",
+        "undo": ".session",
+        "redo": ".session",
+        "reset": ".session",
+        "history": ".session",
+        "session_exists": ".session",
+        "end_session": ".session",
     }
 
     if name in _lazy_map:
@@ -166,6 +176,16 @@ __all__ = [
     "parse_time",
     "parse_time_range",
     "build_remove_plan",
+    # Session (undo/redo edit history)
+    "start_session",
+    "record_edit",
+    "current_path",
+    "undo",
+    "redo",
+    "reset",
+    "history",
+    "session_exists",
+    "end_session",
     # Implementations
     "FFmpegProber",
     "FFmpegConverter",

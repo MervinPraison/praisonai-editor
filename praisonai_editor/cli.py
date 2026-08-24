@@ -13,6 +13,12 @@ Usage:
     praisonai-editor trim talk.mp3 --start "..." --end "..." --verify --verify-tail-forbid "..."
     praisonai-editor remove talk.mp3 --range 11:53-12:43
     praisonai-editor eval trimmed.mp3 --head-contains "..." --tail-forbid "..."
+    praisonai-editor session start talk.mp3
+    praisonai-editor session undo <session-id>
+    praisonai-editor session redo <session-id>
+    praisonai-editor session history <session-id>
+    praisonai-editor session reset <session-id>
+    praisonai-editor session end <session-id>
 """
 
 import argparse
@@ -633,6 +639,44 @@ def main():
     edit_parser.add_argument("--verbose", "-v", action="store_true")
     edit_parser.add_argument("--no-artifacts", action="store_true", help="Don't save artifacts")
 
+    # --- session (undo/redo edit history) ---
+    session_parser = subparsers.add_parser(
+        "session",
+        help="Undo/redo history over a chain of edits to one file",
+    )
+    session_sub = session_parser.add_subparsers(dest="session_command", help="Session commands")
+
+    session_start_parser = session_sub.add_parser("start", help="Begin a new edit session")
+    session_start_parser.add_argument("source", help="Source media file path")
+    session_start_parser.add_argument(
+        "--session-id",
+        dest="session_id",
+        help="Explicit session id (resets that session to just the source if it already exists)",
+    )
+    session_start_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    session_undo_parser = session_sub.add_parser("undo", help="Step back one edit")
+    session_undo_parser.add_argument("session_id", help="Session id")
+    session_undo_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    session_redo_parser = session_sub.add_parser("redo", help="Re-apply the most recently undone edit")
+    session_redo_parser.add_argument("session_id", help="Session id")
+    session_redo_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    session_reset_parser = session_sub.add_parser(
+        "reset", help="Discard all edit history and jump back to the original source"
+    )
+    session_reset_parser.add_argument("session_id", help="Session id")
+    session_reset_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    session_history_parser = session_sub.add_parser("history", help="List all recorded edits")
+    session_history_parser.add_argument("session_id", help="Session id")
+    session_history_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    session_end_parser = session_sub.add_parser("end", help="Delete a session's on-disk journal")
+    session_end_parser.add_argument("session_id", help="Session id")
+    session_end_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -666,6 +710,8 @@ def main():
             return cmd_trim(args)
         elif args.command == "eval":
             return cmd_eval(args)
+        elif args.command == "session":
+            return cmd_session(args)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -1177,6 +1223,151 @@ def cmd_edit(args):
     else:
         print(f"\n✗ Failed: {result.error}", file=sys.stderr)
         return 1
+
+
+def cmd_session(args):
+    if not getattr(args, "session_command", None):
+        print(
+            "Error: specify a session command (start, undo, redo, reset, history, end)",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.session_command == "start":
+        return cmd_session_start(args)
+    elif args.session_command == "undo":
+        return cmd_session_undo(args)
+    elif args.session_command == "redo":
+        return cmd_session_redo(args)
+    elif args.session_command == "reset":
+        return cmd_session_reset(args)
+    elif args.session_command == "history":
+        return cmd_session_history(args)
+    elif args.session_command == "end":
+        return cmd_session_end(args)
+
+    print(f"Error: unknown session command: {args.session_command}", file=sys.stderr)
+    return 1
+
+
+def cmd_session_start(args):
+    from .session import current_path, start_session
+
+    sid = start_session(args.source, session_id=args.session_id)
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "session_id": sid,
+                    "source_path": args.source,
+                    "current_path": current_path(sid),
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"✓ Session started: {sid}")
+        print(f"  source: {args.source}")
+    return 0
+
+
+def cmd_session_undo(args):
+    from .session import session_exists, undo
+
+    if not session_exists(args.session_id):
+        print(f"Unknown session: {args.session_id}", file=sys.stderr)
+        return 1
+
+    path = undo(args.session_id)
+    if path is None:
+        print("Nothing to undo.")
+        return 0
+
+    if args.json:
+        print(json.dumps({"session_id": args.session_id, "path": path}, indent=2))
+    else:
+        print(f"✓ Reverted to: {path}")
+    return 0
+
+
+def cmd_session_redo(args):
+    from .session import redo, session_exists
+
+    if not session_exists(args.session_id):
+        print(f"Unknown session: {args.session_id}", file=sys.stderr)
+        return 1
+
+    path = redo(args.session_id)
+    if path is None:
+        print("Nothing to redo.")
+        return 0
+
+    if args.json:
+        print(json.dumps({"session_id": args.session_id, "path": path}, indent=2))
+    else:
+        print(f"✓ Re-applied: {path}")
+    return 0
+
+
+def cmd_session_reset(args):
+    from .session import reset, session_exists
+
+    if not session_exists(args.session_id):
+        print(f"Unknown session: {args.session_id}", file=sys.stderr)
+        return 1
+
+    path = reset(args.session_id)
+    if args.json:
+        print(json.dumps({"session_id": args.session_id, "path": path}, indent=2))
+    else:
+        print(f"✓ Reset to original source: {path}")
+    return 0
+
+
+def cmd_session_history(args):
+    from .session import current_path, history, session_exists
+
+    if not session_exists(args.session_id):
+        print(f"Unknown session: {args.session_id}", file=sys.stderr)
+        return 1
+
+    entries = history(args.session_id)
+    cur = current_path(args.session_id)
+
+    if args.json:
+        print(
+            json.dumps(
+                {"session_id": args.session_id, "current_path": cur, "history": entries},
+                indent=2,
+            )
+        )
+        return 0
+
+    if not entries:
+        print("No edits recorded yet.")
+    else:
+        for entry in entries:
+            marker = "*" if entry["active"] else " "
+            print(
+                f"[{marker}] {entry['index']}: {entry['operation']} -> {entry['path']} "
+                f"({entry['timestamp']})"
+            )
+    print(f"Current: {cur}")
+    return 0
+
+
+def cmd_session_end(args):
+    from .session import end_session
+
+    removed = end_session(args.session_id)
+    if args.json:
+        print(json.dumps({"session_id": args.session_id, "removed": removed}, indent=2))
+    elif removed:
+        print(f"✓ Session ended: {args.session_id}")
+    else:
+        print(f"Session already gone: {args.session_id}")
+    return 0
 
 
 if __name__ == "__main__":
