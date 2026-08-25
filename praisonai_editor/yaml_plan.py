@@ -258,6 +258,9 @@ def _run_master(source, params, plan_output, is_last):
 
 
 def _run_remove_ranges(source, params, plan_output, is_last):
+    import json as _json
+
+    from .models import TranscriptResult
     from .remove_ranges import remove_time_ranges
 
     kwargs = dict(params)
@@ -267,6 +270,19 @@ def _run_remove_ranges(source, params, plan_output, is_last):
     kwargs.pop("output_path", None)
     kwargs.pop("output", None)
     out_path = _step_output(params, plan_output, is_last)
+
+    # Same idiom as word_gaps' own transcript_path (see _run_word_gaps):
+    # a prior `transcribe` step in the same plan can hand its transcript
+    # forward by writing its own output_path as a .json file, then this
+    # step points transcript_path at it -- run_plan only threads the
+    # current FILE between steps, never an in-memory TranscriptResult.
+    # Without a transcript, remove_ranges still cuts fine, it just can't
+    # re-time a transcript afterward or refine boundaries against one.
+    transcript_path = kwargs.pop("transcript_path", None)
+    if transcript_path:
+        kwargs["transcript"] = TranscriptResult.from_dict(
+            _json.loads(Path(transcript_path).read_text(encoding="utf-8"))
+        )
 
     # YAML's own list syntax (`[1.0, 1.5]`) parses to a plain Python list,
     # never a tuple -- but remove_time_ranges's parse_time_range() only

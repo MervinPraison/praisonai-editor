@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import praisonai_editor.session as session_mod
@@ -262,6 +263,59 @@ class TestRunPlanEndToEnd:
             capture_output=True, text=True).stdout.strip())
         # Original 5.0s, 3.0s gap kept at 0.4s -> removed 2.6s -> ~2.4s.
         assert after == pytest.approx(5.0 - 2.6, abs=0.15)
+
+    def test_remove_ranges_transcript_path_enables_boundary_refinement(self, tmp_path, sessions_home):
+        """remove_ranges' own transcript_path param (mirroring word_gaps'
+        idiom above) -- proves a YAML plan can supply a transcript to
+        enable boundary refinement (see boundary_refine.py), not just that
+        the param is silently accepted. Same connected-speech construction
+        as test_remove_ranges.py's TestRemoveTimeRangesBoundaryRefinement:
+        the transcript deliberately reports word1 ending 40ms INTO word2's
+        real content; a refined cut must land in the true ~20ms gap
+        instead, leaving word2 with a small real silence before it in the
+        output rather than starting exactly at 0."""
+        sr = 16000
+        word1 = np.sin(2 * np.pi * 300 * np.arange(int(0.99 * sr)) / sr) * 0.8
+        gap = np.zeros(int(0.02 * sr))
+        word2 = np.sin(2 * np.pi * 440 * np.arange(int(1.0 * sr)) / sr) * 0.8
+        y = np.concatenate([word1, gap, word2])
+        pcm16 = np.clip(y * 32767, -32768, 32767).astype(np.int16)
+        src = tmp_path / "connected.wav"
+        import wave
+        with wave.open(str(src), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sr)
+            w.writeframes(pcm16.tobytes())
+
+        transcript_path = tmp_path / "transcript.json"
+        transcript_path.write_text(json.dumps({
+            "text": "word1 word2",
+            "words": [{"text": "word1", "start": 0.0, "end": 1.05, "confidence": 1.0},
+                      {"text": "word2", "start": 1.05, "end": 2.0, "confidence": 1.0}],
+            "language": "en", "duration": 2.0,
+        }))
+
+        output = str(tmp_path / "refined.wav")
+        plan = {
+            "source": str(src),
+            "steps": [{"op": "remove_ranges", "params": {
+                "ranges": ["0.0-1.05"], "transcript_path": str(transcript_path),
+                "reencode": True,
+            }}],
+            "output": output,
+        }
+
+        result = run_plan(plan)
+
+        assert result["output_path"] == output
+        assert Path(output).exists()
+        # If transcript_path had been ignored (no refinement performed),
+        # the cut would land exactly at 1.05s and word2 would start at 0.0
+        # in the output. removed_duration strictly less than 1.05s is only
+        # possible if the boundary actually moved earlier, into the real
+        # gap -- proving transcript_path was loaded and used, not dropped.
+        assert result["steps"][0]["removed_duration"] < 1.04
 
     def test_explicit_session_id_is_created_when_not_yet_existing(self, tmp_path, sessions_home):
         sine = _make_sine(tmp_path, duration=3.0)

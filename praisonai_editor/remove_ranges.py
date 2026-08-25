@@ -171,6 +171,7 @@ def remove_time_ranges(
     reencode: bool = False,
     verbose: bool = False,
     transcript: TranscriptResult | None = None,
+    refine_boundaries: bool = True,
 ) -> EditResult:
     """Remove one or more time ranges from a media file.
 
@@ -186,11 +187,35 @@ def remove_time_ranges(
             inside a removed range dropped, later words shifted) rather than
             merely passed through unchanged. When omitted, the returned
             ``transcript`` is ``None`` (matches every existing caller).
+        refine_boundaries: Only takes effect when `transcript` is given --
+            nudges each range's edges to the nearest real acoustic gap
+            (energy-minimum + zero-crossing search, hard-clamped to never
+            cross into a neighboring word's own timestamp) before cutting.
+            See boundary_refine.py's module docstring for why: an ASR word
+            timestamp is a coarse hint, not a precise acoustic boundary,
+            especially for fast/connected speech where words run together
+            with no clean gap -- cutting at the raw reported timestamp can
+            clip a neighbor's onset or leave a fragment behind, sounding
+            "abrupt" even though the join itself has no click. Set False to
+            cut at the raw reported timestamps unchanged (the behavior
+            before this existed). A failure in the boundary search itself
+            (e.g. an unreadable file) falls back to the unrefined
+            timestamps rather than failing the whole edit over what is a
+            quality improvement, not a correctness requirement.
 
     Returns:
         :class:`EditResult` with output path and edit plan.
     """
     parsed = [parse_time_range(r) for r in remove_ranges]
+
+    if transcript is not None and refine_boundaries and transcript.words:
+        from .boundary_refine import refine_range_boundaries
+        try:
+            parsed = refine_range_boundaries(input_path, parsed, transcript.words)
+        except Exception as e:
+            if verbose:
+                print(f"[Warning] Boundary refinement failed, using raw timestamps: {e}")
+
     probe = probe_media(input_path)
     plan = build_remove_plan(probe.duration, parsed)
 

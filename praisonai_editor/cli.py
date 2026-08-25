@@ -387,6 +387,26 @@ def main():
         action="store_true",
         help="Re-encode instead of stream copy (slower, cleaner cuts)",
     )
+    remove_parser.add_argument(
+        "--transcript",
+        "-T",
+        metavar="FILE",
+        help=(
+            "A transcript JSON synced to this file -- enables both re-timing "
+            "the transcript to match the cut output, and word-boundary "
+            "refinement (see --no-refine-boundaries)"
+        ),
+    )
+    remove_parser.add_argument(
+        "--no-refine-boundaries",
+        action="store_true",
+        help=(
+            "With --transcript: cut at the raw reported timestamps instead of "
+            "nudging each edge to the nearest real acoustic gap first (default: "
+            "refine -- an ASR timestamp is a coarse hint, not a precise boundary, "
+            "especially for fast/connected speech)"
+        ),
+    )
     remove_parser.add_argument("--verbose", "-v", action="store_true")
     remove_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
@@ -1232,6 +1252,7 @@ def cmd_transcribe(args):
 
 
 def cmd_remove(args):
+    from .models import TranscriptResult
     from .remove_ranges import remove_time_ranges
 
     ranges: list[str] = list(args.range or [])
@@ -1245,12 +1266,20 @@ def cmd_remove(args):
         print("Error: provide --range START-END and/or --from TIME --to TIME", file=sys.stderr)
         return 1
 
+    transcript = None
+    if args.transcript:
+        transcript = TranscriptResult.from_dict(
+            json.loads(Path(args.transcript).read_text(encoding="utf-8"))
+        )
+
     result = remove_time_ranges(
         args.input,
         ranges,
         output_path=args.output,
         reencode=args.reencode,
         verbose=args.verbose,
+        transcript=transcript,
+        refine_boundaries=not args.no_refine_boundaries,
     )
 
     if args.json:

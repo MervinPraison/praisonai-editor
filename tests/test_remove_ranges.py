@@ -1,8 +1,11 @@
 """Tests for manual time-range removal."""
 
+import shutil
 import subprocess
+import wave
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 import praisonai_editor.remove_ranges as remove_ranges_mod
@@ -14,6 +17,19 @@ from praisonai_editor.remove_ranges import (
     parse_time_range,
     remove_time_ranges,
 )
+
+
+def _ffmpeg_available() -> bool:
+    return shutil.which("ffmpeg") is not None
+
+
+def _write_wav(path, samples, sr):
+    pcm16 = np.clip(samples * 32767, -32768, 32767).astype(np.int16)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(pcm16.tobytes())
 
 
 class TestParseTime:
@@ -217,3 +233,207 @@ class TestRemoveTimeRangesTranscriptParam:
         assert kept["before"].start == pytest.approx(5.0)
         assert kept["after"].start == pytest.approx(30.0)
         assert result.transcript.duration == pytest.approx(90.0)
+
+
+@pytest.mark.skipif(not _ffmpeg_available(), reason="ffmpeg not installed")
+class TestRemoveTimeRangesBoundaryRefinement:
+    """Real ffmpeg, real constructed audio -- the exact "fast/connected
+    speech" failure mode a real ASR would produce: a word's reported end
+    timestamp lands inside the NEXT word's real content instead of the
+    true (short) silent gap between them. Proves remove_time_ranges'
+    default refine_boundaries=True actually relocates the cut, and that
+    turning it off restores the old (clipping) behavior -- an escape
+    hatch, not a silent behavior change with no way back."""
+
+    def _make_connected_speech(self, path):
+        sr = 16000
+        # word1: loud tone for 0.99s. A real ~20ms silent gap. word2:
+        # loud tone starting immediately after. The transcript below
+        # deliberately reports word1 ending 40ms INTO word2's real
+        # content (0.99 + 0.02 + 0.02 = 1.05s), not at the true boundary.
+        word1 = np.sin(2 * np.pi * 300 * np.arange(int(0.99 * sr)) / sr) * 0.8
+        gap = np.zeros(int(0.02 * sr))
+        word2 = np.sin(2 * np.pi * 440 * np.arange(int(1.0 * sr)) / sr) * 0.8
+        y = np.concatenate([word1, gap, word2])
+        _write_wav(path, y, sr)
+        return sr
+
+    def test_refine_boundaries_true_avoids_clipping_the_next_words_onset(self, tmp_path):
+        src = tmp_path / "connected.wav"
+        self._make_connected_speech(src)
+        words = [
+            Word(text="word1", start=0.0, end=1.05),
+            Word(text="word2", start=1.05, end=2.0),
+        ]
+        transcript = TranscriptResult(text="word1 word2", words=words, language="en", duration=2.0)
+
+        result = remove_time_ranges(
+            str(src), [(0.0, 1.05)], output_path=str(tmp_path / "refined.wav"),
+            reencode=True, transcript=transcript, refine_boundaries=True,
+        )
+
+        assert result.success
+        # word2 in the retimed transcript must start with a small REAL
+        # gap of silence before it (the refined cut landed in the true
+        # ~20ms gap, not 40ms into word2 itself) -- not at 0.0, which
+        # would mean word2's own onset got clipped off along with word1.
+        retimed_word2 = result.transcript.words[0]
+        assert retimed_word2.text == "word2"
+        assert retimed_word2.start > 0.02, (
+            f"word2 starts at {retimed_word2.start}s in the output -- "
+            "too close to 0 to have avoided clipping its own onset"
+        )
+
+    def test_refine_boundaries_false_restores_the_old_clipping_behavior(self, tmp_path):
+        """The escape hatch: explicitly opting out must reproduce exactly
+        what remove_time_ranges did before this feature existed -- cut at
+        the raw reported timestamp, onset-clipping and all."""
+        src = tmp_path / "connected.wav"
+        self._make_connected_speech(src)
+        words = [
+            Word(text="word1", start=0.0, end=1.05),
+            Word(text="word2", start=1.05, end=2.0),
+        ]
+        transcript = TranscriptResult(text="word1 word2", words=words, language="en", duration=2.0)
+
+        result = remove_time_ranges(
+            str(src), [(0.0, 1.05)], output_path=str(tmp_path / "raw.wav"),
+            reencode=True, transcript=transcript, refine_boundaries=False,
+        )
+
+        retimed_word2 = result.transcript.words[0]
+        # Cutting at the raw 1.05s boundary removes word1's full 1.05s,
+        # so word2 (which starts at 1.05s in the ORIGINAL) lands at
+        # exactly 0.0s in the output -- its own onset already clipped by
+        # the 40ms the raw ASR timestamp overshot by.
+        assert retimed_word2.start == pytest.approx(0.0, abs=0.01)
+
+    def test_default_is_refine_boundaries_true(self, tmp_path):
+        """No caller changes needed -- every existing remove_ranges/
+        word_gaps call with a transcript benefits immediately."""
+        src = tmp_path / "connected.wav"
+        self._make_connected_speech(src)
+        words = [
+            Word(text="word1", start=0.0, end=1.05),
+            Word(text="word2", start=1.05, end=2.0),
+        ]
+        transcript = TranscriptResult(text="word1 word2", words=words, language="en", duration=2.0)
+
+        result = remove_time_ranges(
+            str(src), [(0.0, 1.05)], output_path=str(tmp_path / "default.wav"),
+            reencode=True, transcript=transcript,
+        )
+
+        assert result.transcript.words[0].start > 0.02
+
+    def test_no_transcript_means_no_refinement_attempted(self, tmp_path, monkeypatch):
+        """refine_boundaries has nothing to clamp/search against without a
+        transcript's word list -- must not even try (and definitely must
+        not error) when transcript=None, the majority of real calls."""
+        src = tmp_path / "connected.wav"
+        self._make_connected_speech(src)
+
+        called = {"n": 0}
+        import praisonai_editor.boundary_refine as boundary_refine_mod
+        real_refine = boundary_refine_mod.refine_range_boundaries
+
+        def spy(*args, **kwargs):
+            called["n"] += 1
+            return real_refine(*args, **kwargs)
+
+        monkeypatch.setattr(boundary_refine_mod, "refine_range_boundaries", spy)
+
+        result = remove_time_ranges(
+            str(src), [(0.0, 1.05)], output_path=str(tmp_path / "no_transcript.wav"),
+            reencode=True,
+        )
+
+        assert result.success
+        assert called["n"] == 0
+
+
+class TestRemoveCliArgWiring:
+    """No CLI-level test existed for `remove` at all before this -- these
+    cover the two new flags (--transcript, --no-refine-boundaries) plus a
+    no-regression pin for the existing flags."""
+
+    def test_transcript_and_refine_boundaries_default_wiring(self, monkeypatch, tmp_path):
+        import sys as sys_mod
+
+        import praisonai_editor.cli as cli
+        import praisonai_editor.remove_ranges as remove_ranges_mod
+        from praisonai_editor.models import EditResult
+
+        transcript_path = tmp_path / "t.json"
+        transcript_path.write_text(
+            '{"text": "hi", "words": [{"text": "hi", "start": 0.0, "end": 0.2}], '
+            '"language": "en", "duration": 0.2}'
+        )
+
+        captured = {}
+
+        def fake_remove_time_ranges(input_path, ranges, **kwargs):
+            captured["input_path"] = input_path
+            captured["ranges"] = ranges
+            captured.update(kwargs)
+            return EditResult(input_path=input_path, output_path="out.wav", success=True)
+
+        monkeypatch.setattr(remove_ranges_mod, "remove_time_ranges", fake_remove_time_ranges)
+        monkeypatch.setattr(
+            sys_mod, "argv",
+            ["praisonai-editor", "remove", "in.wav", "--range", "1.0-2.0",
+             "--transcript", str(transcript_path), "--json"],
+        )
+        assert cli.main() == 0
+
+        assert captured["ranges"] == ["1.0-2.0"]
+        assert captured["transcript"] is not None
+        assert captured["transcript"].words[0].text == "hi"
+        # Default: refine_boundaries stays on unless --no-refine-boundaries is passed.
+        assert captured["refine_boundaries"] is True
+
+    def test_no_refine_boundaries_flag_disables_it(self, monkeypatch, tmp_path):
+        import sys as sys_mod
+
+        import praisonai_editor.cli as cli
+        import praisonai_editor.remove_ranges as remove_ranges_mod
+        from praisonai_editor.models import EditResult
+
+        transcript_path = tmp_path / "t.json"
+        transcript_path.write_text('{"text": "hi", "words": [], "language": "en", "duration": 0.2}')
+
+        captured = {}
+
+        def fake_remove_time_ranges(input_path, ranges, **kwargs):
+            captured.update(kwargs)
+            return EditResult(input_path=input_path, output_path="out.wav", success=True)
+
+        monkeypatch.setattr(remove_ranges_mod, "remove_time_ranges", fake_remove_time_ranges)
+        monkeypatch.setattr(
+            sys_mod, "argv",
+            ["praisonai-editor", "remove", "in.wav", "--range", "1.0-2.0",
+             "--transcript", str(transcript_path), "--no-refine-boundaries", "--json"],
+        )
+        assert cli.main() == 0
+        assert captured["refine_boundaries"] is False
+
+    def test_no_transcript_means_transcript_none(self, monkeypatch):
+        import sys as sys_mod
+
+        import praisonai_editor.cli as cli
+        import praisonai_editor.remove_ranges as remove_ranges_mod
+        from praisonai_editor.models import EditResult
+
+        captured = {}
+
+        def fake_remove_time_ranges(input_path, ranges, **kwargs):
+            captured.update(kwargs)
+            return EditResult(input_path=input_path, output_path="out.wav", success=True)
+
+        monkeypatch.setattr(remove_ranges_mod, "remove_time_ranges", fake_remove_time_ranges)
+        monkeypatch.setattr(
+            sys_mod, "argv",
+            ["praisonai-editor", "remove", "in.wav", "--range", "1.0-2.0", "--json"],
+        )
+        assert cli.main() == 0
+        assert captured["transcript"] is None
