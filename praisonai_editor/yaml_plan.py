@@ -65,6 +65,7 @@ OP_NAMES = (
     "concat",
     "isolate_vocals",
     "convert",
+    "denoise",
 )
 
 
@@ -415,6 +416,23 @@ def _run_convert(source, params, plan_output, is_last):
     }
 
 
+def _run_denoise(source, params, plan_output, is_last):
+    from .denoise import denoise_audio
+
+    kwargs = dict(params)
+    kwargs.pop("output_path", None)
+    kwargs.pop("output", None)
+    out_path = _step_output(params, plan_output, is_last)
+
+    result = denoise_audio(source, out_path, **kwargs)
+    return {
+        "current": result.output_path,
+        "output_path": result.output_path,
+        "record_params": dict(params),
+        "result": {"output_path": result.output_path, "artifacts": dict(result.artifacts or {})},
+    }
+
+
 def _run_step(op, current, params, plan_output, is_last, continue_with):
     if op == "isolate_vocals":
         return _run_isolate_vocals(current, params, plan_output, is_last, continue_with)
@@ -438,6 +456,8 @@ def _run_step(op, current, params, plan_output, is_last, continue_with):
         return _run_conform(current, params, plan_output, is_last)
     if op == "convert":
         return _run_convert(current, params, plan_output, is_last)
+    if op == "denoise":
+        return _run_denoise(current, params, plan_output, is_last)
     raise PlanError(f"Unknown op: {op!r}")  # pragma: no cover -- load_plan already validates
 
 

@@ -175,6 +175,32 @@ class TestRunPlanEndToEnd:
         assert Path(output).exists()
         assert result["steps"][0]["removed_duration"] == pytest.approx(0.5, abs=0.05)
 
+    def test_denoise_is_a_real_reachable_yaml_op(self, tmp_path, sessions_home):
+        """Regression test: `denoise` existed at the package/CLI/Studio-API/
+        Studio-UI layers but was missing from OP_NAMES, so a YAML plan using
+        it raised "unknown op" -- the one layer it couldn't be used from.
+        Real ffmpeg run, not mocked: proves the op is now actually wired
+        end-to-end, not just accepted by validation."""
+        sine = _make_sine(tmp_path, duration=4.0)
+        output = str(tmp_path / "denoised.m4a")
+
+        plan = {
+            "source": sine,
+            "steps": [{"op": "denoise", "params": {"noise_reduction": 20.0, "noise_floor": -40.0}}],
+            "output": output,
+        }
+
+        result = run_plan(plan)
+
+        assert result["output_path"] == output
+        assert Path(output).exists()
+        assert result["steps"][0]["op"] == "denoise"
+        assert result["steps"][0]["artifacts"]["noise_reduction"] == "20.0"
+
+        sid = result["session_id"]
+        assert session_exists(sid)
+        assert history(sid)[0]["operation"] == "denoise"
+
     def test_explicit_session_id_is_created_when_not_yet_existing(self, tmp_path, sessions_home):
         sine = _make_sine(tmp_path, duration=3.0)
         plan = {
