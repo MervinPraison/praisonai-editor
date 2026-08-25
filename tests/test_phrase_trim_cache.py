@@ -1,6 +1,8 @@
 """Transcript cache for phrase trim."""
 
 import json
+import shutil
+import subprocess
 
 import pytest
 
@@ -9,9 +11,11 @@ from praisonai_editor.phrase_trim import (
     _first_phrase_first_word_time,
     _media_cache_dir_name,
     _norm,
+    _phrase_match_starts,
     _try_load_transcript_cache,
     _upgrade_short_digest_cache_dir,
     _write_transcript_cache,
+    trim_between_phrase_markers,
     transcript_cache_file,
     transcript_sidecar_path,
 )
@@ -173,3 +177,120 @@ def test_phrase_first_start_includes_first_spoken_word_of_phrase():
     p = _norm("so what topic")
     t = _first_phrase_first_word_time(words, p, max_span=10)
     assert t == 0.5
+
+
+class TestOutOfOrderWordRobustness:
+    """Real transcripts occasionally have an out-of-order word -- a word
+    whose reported `start` is earlier than the PREVIOUS word's own `start`
+    (an ASR timestamp glitch confirmed present in real .transcript.json
+    output, distinct from a zero-duration word). `_exclusive_end_phrase_
+    first_word_time` and `trim_between_phrase_markers`'s own "window"
+    branch both need to pick the LAST occurrence of the end phrase in
+    TRANSCRIPT (list) order, not whichever candidate happens to have the
+    numerically largest `start` value -- those are only the same thing
+    when every word's timestamp is monotonically increasing.
+    """
+
+    def test_exclusive_end_time_uses_transcript_order_not_max_value(self):
+        # "stop now" occurs twice. The second (true last, later in the
+        # list) occurrence has a corrupted start (9.9) that is LOWER than
+        # the first occurrence's own start (10.0) -- max() would silently
+        # return the FIRST occurrence's time instead of the last one's.
+        words = [
+            Word(text="stop", start=10.0, end=10.3),
+            Word(text="now", start=10.3, end=10.6),
+            Word(text="ok", start=10.6, end=10.8),
+            Word(text="stop", start=9.9, end=10.9),  # out-of-order
+            Word(text="now", start=10.9, end=11.2),
+        ]
+        p = _norm("stop now")
+        t = _exclusive_end_phrase_first_word_time(words, p, max_span=10, end_last_match=True)
+        # The true last occurrence starts at 9.9s -- NOT 10.0s (what a
+        # max()-over-values selection would have wrongly returned).
+        assert t == 9.9
+
+    def test_exclusive_end_time_first_match_still_works_when_ordered(self):
+        # Sanity: normal, monotonically-ordered data is unaffected.
+        words = [
+            Word(text="stop", start=10.0, end=10.3),
+            Word(text="now", start=10.3, end=10.6),
+            Word(text="ok", start=10.6, end=10.8),
+            Word(text="stop", start=12.0, end=12.3),
+            Word(text="now", start=12.3, end=12.6),
+        ]
+        p = _norm("stop now")
+        assert _exclusive_end_phrase_first_word_time(
+            words, p, max_span=10, end_last_match=True
+        ) == 12.0
+        assert _exclusive_end_phrase_first_word_time(
+            words, p, max_span=10, end_last_match=False
+        ) == 10.0
+
+
+def _ffmpeg_available() -> bool:
+    return shutil.which("ffmpeg") is not None
+
+
+@pytest.mark.skipif(not _ffmpeg_available(), reason="ffmpeg not installed")
+class TestTrimBetweenPhraseMarkersOutOfOrderWord:
+    """Real ffmpeg, a real generated audio file, and a hand-built
+    transcript (via `transcript_path=`, so no ASR call is made) with a
+    genuine out-of-order word -- proves `trim_between_phrase_markers`'s
+    default ("window") boundary mode cuts at the TRUE last occurrence of
+    the end phrase, not at whatever candidate has the largest raw
+    timestamp value."""
+
+    def test_window_mode_cuts_at_the_true_last_occurrence(self, tmp_path):
+        ffmpeg = shutil.which("ffmpeg")
+        media = tmp_path / "in.wav"
+        result = subprocess.run(
+            [ffmpeg, "-y", "-nostdin", "-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono",
+             "-t", "12.0", str(media)],
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stderr.decode()[-800:]
+
+        # "banana rocket" occurs twice. The second (true last) occurrence's
+        # first word ("banana") is out-of-order -- its start (4.9) is
+        # earlier than the immediately preceding word's own start (7.0).
+        words = [
+            Word(text="hello", start=0.0, end=0.5),
+            Word(text="apple", start=1.0, end=1.3),
+            Word(text="banana", start=5.0, end=5.3),
+            Word(text="rocket", start=5.3, end=5.6),
+            Word(text="carrot", start=7.0, end=7.3),
+            Word(text="banana", start=4.9, end=9.0),  # out-of-order
+            Word(text="rocket", start=9.0, end=9.6),
+        ]
+        transcript = TranscriptResult(
+            text=" ".join(w.text for w in words), words=words, language="en", duration=12.0
+        )
+        # Confirm the fixture actually reproduces the hazard this test
+        # guards against: transcript-order-vs-value disagree.
+        starts = _phrase_match_starts(words, _norm("banana rocket"))
+        assert max(starts) != starts[-1]
+
+        tpath = tmp_path / "transcript.json"
+        tpath.write_text(json.dumps(transcript.to_dict()), encoding="utf-8")
+
+        out = tmp_path / "out.wav"
+        trim_between_phrase_markers(
+            str(media), str(out),
+            start_phrase="hello",
+            end_phrase="banana rocket",
+            end_last_match=True,
+            transcript_path=str(tpath),
+            refine_with_openai=False,
+        )
+
+        assert out.exists()
+        probe = subprocess.run(
+            [ffmpeg.replace("ffmpeg", "ffprobe"), "-v", "error", "-show_entries",
+             "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(out)],
+            capture_output=True, text=True,
+        )
+        duration = float(probe.stdout.strip())
+        # Cut should run from 0.0s to the TRUE last occurrence's start
+        # (4.9s), not to 7.0s (the wrong value a plain max() selection
+        # over candidate timestamps would have picked).
+        assert duration == pytest.approx(4.9, abs=0.2)

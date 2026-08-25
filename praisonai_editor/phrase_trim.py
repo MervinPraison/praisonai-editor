@@ -311,7 +311,14 @@ def _exclusive_end_phrase_first_word_time(
             cands.append(float(words[best_ii].start))
     if not cands:
         return None
-    return max(cands) if end_last_match else min(cands)
+    # `cands` is appended in ascending `j` order, i.e. transcript (list)
+    # order -- the true occurrence order -- so the last/first element IS
+    # the last/first occurrence. Deliberately NOT max(cands)/min(cands):
+    # real ASR transcripts occasionally have an out-of-order word (a
+    # start earlier than the previous word's own start), which can make
+    # the true last occurrence's start value smaller than an earlier
+    # occurrence's -- max() would then silently pick the WRONG occurrence.
+    return cands[-1] if end_last_match else cands[0]
 
 
 def trim_between_phrase_markers(
@@ -426,7 +433,12 @@ def trim_between_phrase_markers(
         if not end_starts:
             t1 = float(tr.duration or tr.words[-1].end)
         else:
-            t1 = max(end_starts) if end_last_match else min(end_starts)
+            # See _exclusive_end_phrase_first_word_time's own comment:
+            # `end_starts` is in transcript (list) order, so indexing
+            # picks the true last/first occurrence even if an isolated
+            # out-of-order word's start value would otherwise fool
+            # max()/min() into picking the wrong one.
+            t1 = end_starts[-1] if end_last_match else end_starts[0]
 
     if t1 <= t0:
         raise RuntimeError(f"Invalid trim range: start={t0}, end={t1}")
