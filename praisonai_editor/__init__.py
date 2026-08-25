@@ -84,6 +84,9 @@ def __getattr__(name):
         "NormalizeResult": ".normalize",
         # Denoise
         "denoise_audio": ".denoise",
+        # Word gaps
+        "shorten_word_gaps": ".word_gaps",
+        "find_long_gaps": ".word_gaps",
         # Transcribe
         "OpenAITranscriber": ".transcribe",
         "LocalTranscriber": ".transcribe",
@@ -167,6 +170,8 @@ __all__ = [
     "VolumeStats",
     "NormalizeResult",
     "denoise_audio",
+    "shorten_word_gaps",
+    "find_long_gaps",
     "transcribe_audio",
     "DEFAULT_OPENAI_TRANSCRIPTION_MODEL",
     "create_edit_plan",

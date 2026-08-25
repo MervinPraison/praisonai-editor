@@ -300,6 +300,7 @@ class LocalTranscriber:
         language: str | None = None,
         model: str = "base",
         speed: float = 1.0,
+        vad_filter: bool = False,
     ) -> TranscriptResult:
         """Transcribe using local faster-whisper.
 
@@ -307,6 +308,14 @@ class LocalTranscriber:
             audio_path: Path to audio file
             language: Optional language code
             model: Model name (tiny, base, small, medium, large-v3)
+            vad_filter: Skip non-speech segments (Silero VAD, bundled with
+                faster-whisper) before transcribing. Off by default to keep
+                existing callers' timestamps unchanged, but strongly
+                recommended for anything that reasons about SILENCE (e.g.
+                word_gaps.shorten_word_gaps): without it, a long pause is
+                often absorbed into the timestamp of the word right before
+                or after it instead of showing up as a real gap between
+                two words' timestamps.
 
         Returns:
             TranscriptResult with word-level timestamps
@@ -326,7 +335,9 @@ class LocalTranscriber:
                 mp3_path = os.path.join(tmpdir, "audio.mp3")
                 _extract_audio_mp3(str(path), mp3_path, speed=speed)
                 return _scale_transcript(
-                    self._run_whisper_with_model(whisper_model, mp3_path, language, time_offset=0.0),
+                    self._run_whisper_with_model(
+                        whisper_model, mp3_path, language, time_offset=0.0, vad_filter=vad_filter
+                    ),
                     speed,
                 )
 
@@ -340,7 +351,9 @@ class LocalTranscriber:
 
             if file_size <= MAX_UPLOAD_BYTES and estimated_secs <= MAX_AUDIO_DURATION_SECS:
                 return _scale_transcript(
-                    self._run_whisper_with_model(whisper_model, mp3_path, language, time_offset=0.0),
+                    self._run_whisper_with_model(
+                        whisper_model, mp3_path, language, time_offset=0.0, vad_filter=vad_filter
+                    ),
                     speed,
                 )
 
@@ -363,7 +376,7 @@ class LocalTranscriber:
                     flush=True,
                 )
                 result = self._run_whisper_with_model(
-                    whisper_model, chunk_path, language, time_offset=0.0
+                    whisper_model, chunk_path, language, time_offset=0.0, vad_filter=vad_filter
                 )
                 all_texts.append(result.text)
                 detected_language = result.language
@@ -394,11 +407,13 @@ class LocalTranscriber:
         audio_path: str,
         language: str | None,
         time_offset: float,
+        vad_filter: bool = False,
     ) -> TranscriptResult:
         segments, info = whisper_model.transcribe(
             audio_path,
             language=language,
             word_timestamps=True,
+            vad_filter=vad_filter,
         )
 
         words: List[Word] = []
@@ -433,6 +448,7 @@ def transcribe_audio(
     language: str | None = None,
     model: str | None = None,
     speed: float = 1.0,
+    vad_filter: bool = False,
 ) -> TranscriptResult:
     """Transcribe an audio or video file.
 
@@ -442,6 +458,9 @@ def transcribe_audio(
         language: Optional language code
         model: For API, default ``DEFAULT_OPENAI_TRANSCRIPTION_MODEL``; for local, ``base``
         speed: Speed factor before ASR (2.0 = half billed minutes; timestamps mapped back)
+        vad_filter: Local-only (silently ignored for the OpenAI API path).
+            See LocalTranscriber.transcribe's own docstring for why this
+            matters for anything reasoning about silence/gaps.
 
     Returns:
         TranscriptResult with word-level timestamps
@@ -453,6 +472,7 @@ def transcribe_audio(
             language=language,
             model=model or "base",
             speed=speed,
+            vad_filter=vad_filter,
         )
     else:
         transcriber = OpenAITranscriber()

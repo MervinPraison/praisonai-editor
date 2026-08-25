@@ -66,6 +66,7 @@ OP_NAMES = (
     "isolate_vocals",
     "convert",
     "denoise",
+    "word_gaps",
 )
 
 
@@ -433,6 +434,40 @@ def _run_denoise(source, params, plan_output, is_last):
     }
 
 
+def _run_word_gaps(source, params, plan_output, is_last):
+    import json as _json
+
+    from .models import TranscriptResult
+    from .word_gaps import shorten_word_gaps
+
+    kwargs = dict(params)
+    kwargs.pop("output_path", None)
+    kwargs.pop("output", None)
+    out_path = _step_output(params, plan_output, is_last)
+
+    # A previous `transcribe` step in the same plan can hand its transcript
+    # forward this way (write that step's own output_path as a .json file,
+    # then point this step's transcript_path at it) -- run_plan only
+    # threads the current FILE between steps, never an in-memory
+    # TranscriptResult, so a step boundary is the one place this has to be
+    # a file reference rather than a Python object. Same idiom phrase_trim's
+    # own --transcript/transcript_path already uses.
+    transcript_path = kwargs.pop("transcript_path", None)
+    transcript = None
+    if transcript_path:
+        transcript = TranscriptResult.from_dict(
+            _json.loads(Path(transcript_path).read_text(encoding="utf-8"))
+        )
+
+    result = shorten_word_gaps(source, out_path, transcript=transcript, **kwargs)
+    return {
+        "current": result.output_path,
+        "output_path": result.output_path,
+        "record_params": dict(params),
+        "result": {"output_path": result.output_path, "artifacts": dict(result.artifacts or {})},
+    }
+
+
 def _run_step(op, current, params, plan_output, is_last, continue_with):
     if op == "isolate_vocals":
         return _run_isolate_vocals(current, params, plan_output, is_last, continue_with)
@@ -458,6 +493,8 @@ def _run_step(op, current, params, plan_output, is_last, continue_with):
         return _run_convert(current, params, plan_output, is_last)
     if op == "denoise":
         return _run_denoise(current, params, plan_output, is_last)
+    if op == "word_gaps":
+        return _run_word_gaps(current, params, plan_output, is_last)
     raise PlanError(f"Unknown op: {op!r}")  # pragma: no cover -- load_plan already validates
 
 

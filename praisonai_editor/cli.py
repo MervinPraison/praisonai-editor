@@ -286,6 +286,44 @@ def main():
     denoise_parser.add_argument("--verbose", "-v", action="store_true")
     denoise_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
+    # --- word-gaps ---
+    gaps_parser = subparsers.add_parser(
+        "word-gaps",
+        help="Shorten long pauses between words to a target length (keeps some, unlike remove)",
+    )
+    gaps_parser.add_argument("input", help="Input audio file")
+    gaps_parser.add_argument("--output", "-o", help="Output file (default: {stem}_cut{ext})")
+    gaps_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        metavar="SEC",
+        help="Only gaps longer than this are touched (default 0.5)",
+    )
+    gaps_parser.add_argument(
+        "--target",
+        type=float,
+        default=0.25,
+        metavar="SEC",
+        help="Shorten each qualifying gap TO this length, must be < --threshold (default 0.25)",
+    )
+    gaps_parser.add_argument(
+        "--transcript",
+        "-T",
+        metavar="FILE",
+        help="Use this transcript JSON instead of running ASR",
+    )
+    gaps_parser.add_argument(
+        "--local", action="store_true", help="Transcribe with local faster-whisper (only used without --transcript)"
+    )
+    gaps_parser.add_argument("--language", help="Language code (e.g., en) (only used without --transcript)")
+    gaps_parser.add_argument("--model", "-m", help="ASR model id (only used without --transcript)")
+    gaps_parser.add_argument(
+        "--reencode", action="store_true", help="Re-encode instead of stream-copy (slower, frame-accurate)"
+    )
+    gaps_parser.add_argument("--verbose", "-v", action="store_true")
+    gaps_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
     # --- transcribe ---
     trans_parser = subparsers.add_parser("transcribe", help="Transcribe audio/video")
     trans_parser.add_argument("input", help="Input media file")
@@ -829,6 +867,8 @@ def main():
             return cmd_master(args)
         elif args.command == "denoise":
             return cmd_denoise(args)
+        elif args.command == "word-gaps":
+            return cmd_word_gaps(args)
         elif args.command == "transcribe":
             return cmd_transcribe(args)
         elif args.command == "extract-text":
@@ -1098,6 +1138,39 @@ def cmd_denoise(args):
         print(json.dumps(result.to_dict(), indent=2))
     else:
         print(f"✓ Denoised → {result.output_path}")
+    return 0
+
+
+def cmd_word_gaps(args):
+    from .models import TranscriptResult
+    from .word_gaps import shorten_word_gaps
+
+    transcript = None
+    if args.transcript:
+        transcript = TranscriptResult.from_dict(
+            json.loads(Path(args.transcript).read_text(encoding="utf-8"))
+        )
+
+    result = shorten_word_gaps(
+        args.input,
+        args.output,
+        transcript=transcript,
+        use_local=args.local,
+        language=args.language,
+        model=args.model,
+        threshold=args.threshold,
+        target=args.target,
+        reencode=args.reencode,
+        verbose=args.verbose,
+    )
+
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        print(
+            f"✓ Shortened {result.artifacts['gaps_shortened']} gap(s) "
+            f"(> {args.threshold}s → {args.target}s) → {result.output_path}"
+        )
     return 0
 
 

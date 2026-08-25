@@ -201,6 +201,68 @@ class TestRunPlanEndToEnd:
         assert session_exists(sid)
         assert history(sid)[0]["operation"] == "denoise"
 
+    def test_word_gaps_is_a_real_reachable_yaml_op(self, tmp_path, sessions_home):
+        """word_gaps (praisonai_editor.word_gaps.shorten_word_gaps) reachable
+        from a YAML plan via a `transcript_path` param -- the same idiom
+        phrase_trim's own --transcript/transcript_path already uses, since
+        run_plan only threads the current FILE between steps, never an
+        in-memory TranscriptResult. Real ffmpeg run: a tone, 3s of real
+        silence, another tone, concatenated -- proves the gap is actually
+        cut, not just that the op is accepted by validation."""
+        ffmpeg = shutil.which("ffmpeg")
+        seg1 = tmp_path / "seg1.wav"
+        gap = tmp_path / "gap.wav"
+        seg2 = tmp_path / "seg2.wav"
+        for path, args in (
+            (seg1, ["-f", "lavfi", "-i", "sine=frequency=440:duration=1"]),
+            (gap, ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "3"]),
+            (seg2, ["-f", "lavfi", "-i", "sine=frequency=880:duration=1"]),
+        ):
+            r = subprocess.run(
+                [ffmpeg, "-y", "-nostdin", *args, "-ar", "44100", "-ac", "1", str(path)],
+                capture_output=True)
+            assert r.returncode == 0, r.stderr.decode()[-800:]
+
+        combined = tmp_path / "combined.wav"
+        list_file = tmp_path / "list.txt"
+        list_file.write_text(f"file '{seg1}'\nfile '{gap}'\nfile '{seg2}'\n")
+        r = subprocess.run(
+            [ffmpeg, "-y", "-nostdin", "-f", "concat", "-safe", "0", "-i", str(list_file),
+             "-c", "copy", str(combined)],
+            capture_output=True)
+        assert r.returncode == 0, r.stderr.decode()[-800:]
+
+        transcript_path = tmp_path / "transcript.json"
+        transcript_path.write_text(json.dumps({
+            "text": "a b",
+            "words": [{"text": "a", "start": 0.0, "end": 1.0, "confidence": 1.0},
+                      {"text": "b", "start": 4.0, "end": 5.0, "confidence": 1.0}],
+            "language": "en", "duration": 5.0,
+        }))
+
+        output = str(tmp_path / "shortened.wav")
+        plan = {
+            "source": str(combined),
+            "steps": [{"op": "word_gaps", "params": {
+                "transcript_path": str(transcript_path), "threshold": 1.0, "target": 0.4,
+            }}],
+            "output": output,
+        }
+
+        result = run_plan(plan)
+
+        assert result["output_path"] == output
+        assert Path(output).exists()
+        assert result["steps"][0]["op"] == "word_gaps"
+        assert result["steps"][0]["artifacts"]["gaps_shortened"] == "1"
+
+        after = float(subprocess.run(
+            [ffmpeg.replace("ffmpeg", "ffprobe"), "-v", "error", "-show_entries",
+             "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", output],
+            capture_output=True, text=True).stdout.strip())
+        # Original 5.0s, 3.0s gap kept at 0.4s -> removed 2.6s -> ~2.4s.
+        assert after == pytest.approx(5.0 - 2.6, abs=0.15)
+
     def test_explicit_session_id_is_created_when_not_yet_existing(self, tmp_path, sessions_home):
         sine = _make_sine(tmp_path, duration=3.0)
         plan = {
