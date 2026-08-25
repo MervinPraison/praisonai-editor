@@ -50,7 +50,7 @@ from typing import Any, Dict, Optional, Union
 
 import yaml
 
-#: The 11 op names this module understands, mapped (in code) onto real
+#: The 15 op names this module understands, mapped (in code) onto real
 #: package functions -- see ``_run_step`` for the dispatch table.
 OP_NAMES = (
     "transcribe",
@@ -67,6 +67,7 @@ OP_NAMES = (
     "convert",
     "denoise",
     "word_gaps",
+    "eval",
 )
 
 
@@ -173,6 +174,49 @@ def _run_transcribe(source, params, plan_output, is_last):
             "duration": result.duration,
             "language": result.language,
             "num_words": len(result.words),
+        },
+    }
+
+
+def _run_eval(source, params, plan_output, is_last):
+    """A quality GATE, not a media-producing step -- runs
+    trim_eval.evaluate_trim_edges (the same check CLI's `trim --verify`
+    loop uses) against the current file and, by default, halts the plan
+    with a PlanError if it fails. Pass params.strict: false to record the
+    result without halting (e.g. to inspect it via a later step or just
+    log it). There was previously no way to assert trim quality from a
+    YAML plan at all -- only the CLI's own retry loop (cmd_trim, --verify)
+    could gate on this.
+    """
+    kwargs = dict(params)
+    strict = kwargs.pop("strict", True)
+    kwargs.pop("output_path", None)
+    kwargs.pop("output", None)
+
+    from .trim_eval import evaluate_trim_edges
+    rep = evaluate_trim_edges(source, **kwargs)
+
+    if strict and not rep.ok:
+        raise PlanError(
+            f"eval step failed quality gate for {source!r}: {'; '.join(rep.failures) or 'unknown failure'} "
+            "-- set params.strict: false to report without halting the plan"
+        )
+
+    # eval never alters the media -- the chained "current" stays whatever
+    # it was before this step (same convention as transcribe's own
+    # passthrough above).
+    return {
+        "current": source,
+        "output_path": None,
+        "record_params": dict(params),
+        "result": {
+            "ok": rep.ok,
+            "failures": list(rep.failures),
+            "head_transcript": rep.head_transcript,
+            "tail_transcript": rep.tail_transcript,
+            "ai_judge_ran": rep.ai_judge_ran,
+            "ai_judge_acceptable": rep.ai_judge_acceptable,
+            "ai_judge_reason": rep.ai_judge_reason,
         },
     }
 
@@ -495,6 +539,8 @@ def _run_step(op, current, params, plan_output, is_last, continue_with):
         return _run_prompt_edit(current, params, plan_output, is_last)
     if op == "transcribe":
         return _run_transcribe(current, params, plan_output, is_last)
+    if op == "eval":
+        return _run_eval(current, params, plan_output, is_last)
     if op == "normalize":
         return _run_normalize(current, params, plan_output, is_last)
     if op == "master":

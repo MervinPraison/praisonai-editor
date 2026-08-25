@@ -333,6 +333,8 @@ def edit_video(
     *,
     preset: str = "podcast",
     detector: str = "auto",
+    demix: bool = False,
+    primary_zone_only: bool = False,
     remove_fillers: bool = True,
     remove_repetitions: bool = True,
     remove_silence: bool = True,
@@ -419,27 +421,38 @@ def edit_video(
 
         if use_content_detection:
             from .detect import create_content_plan
+            # Same demix-aware split as edit_audio: with demix, speech_over_music
+            # has been precisely separated into 'singing' vs 'talking_over_music',
+            # so songs_only should ONLY keep 'singing' and 'music'. Without demix,
+            # keep speech_over_music too (it hasn't been split).
             keep_map = {
-                "songs_only": ["music", "singing", "speech_over_music"],
+                "songs_only": ["music", "singing"] if demix else ["music", "singing", "speech_over_music"],
                 "speech_only": ["speech", "talking_over_music", "speech_over_music"],
                 "no_silence": ["speech", "music", "singing", "talking_over_music", "speech_over_music"],
             }
-            plan, blocks = create_content_plan(
+            plan, blocks, all_events = create_content_plan(
                 input_path, transcript, probe.duration,
                 keep_types=keep_map[preset],
                 detector=detector,
+                demix=demix,
+                primary_zone_only=primary_zone_only,
                 verbose=verbose,
             )
             if save_artifacts:
-                blocks_data = [
-                    {"start": b.start, "end": b.end, "duration": b.duration,
-                     "type": b.content_type, "rms_db": round(b.mean_volume, 1),
-                     "crest_factor": round(b.crest_factor, 1),
-                     "dynamic_range": round(b.dynamic_range, 1),
-                     "zero_crossing_rate": round(b.zero_crossing_rate, 4),
-                     "confidence": round(b.confidence, 2)}
-                    for b in blocks
-                ]
+                def _b_dict(b):
+                    return {
+                        "start": b.start, "end": b.end, "duration": b.duration,
+                        "type": b.content_type, "detector": b.detector,
+                        "rms_db": round(b.mean_volume, 1),
+                        "crest_factor": round(b.crest_factor, 1),
+                        "dynamic_range": round(b.dynamic_range, 1),
+                        "zero_crossing_rate": round(b.zero_crossing_rate, 4),
+                        "confidence": round(b.confidence, 2)
+                    }
+                blocks_data = {
+                    "resolved": [_b_dict(b) for b in blocks],
+                    "raw_events": [_b_dict(e) for e in all_events]
+                }
                 blocks_path = artifacts_dir / "content_blocks.json"
                 artifacts_dir.mkdir(parents=True, exist_ok=True)  # ensure dir exists
                 with open(blocks_path, "w") as f:
@@ -487,6 +500,8 @@ def edit_video(
         )
 
     except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()   # log the full stack to stderr for debugging
         return EditResult(
             input_path=input_path,
             output_path=output_path,

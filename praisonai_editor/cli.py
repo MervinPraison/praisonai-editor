@@ -252,6 +252,17 @@ def main():
         help="Output channels: 1 mono, 2 stereo (default 2)",
     )
     master_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate")
+    master_parser.add_argument(
+        "--chain",
+        action="append",
+        metavar="FILTER",
+        help=(
+            "One ffmpeg -af filter expression (e.g. 'acompressor=threshold=-18dB:ratio=3'); "
+            "repeat --chain for each filter. Fully REPLACES the preset's own pre-chain "
+            "(loudnorm + limiter + resample always still run after it). "
+            "Default: preset-driven pre-chain."
+        ),
+    )
     master_parser.add_argument("--verbose", "-v", action="store_true")
     master_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
@@ -283,6 +294,7 @@ def main():
         action="store_true",
         help="Disable adapting to noise that changes over the file (default: adapts)",
     )
+    denoise_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate")
     denoise_parser.add_argument("--verbose", "-v", action="store_true")
     denoise_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
@@ -342,6 +354,14 @@ def main():
         default=1.0,
         metavar="FACTOR",
         help="Speed audio before ASR (e.g. 2.0 halves API cost; timestamps scaled back)",
+    )
+    trans_parser.add_argument(
+        "--vad-filter",
+        action="store_true",
+        help=(
+            "Local-only (--local): filter out non-speech before transcription for more "
+            "accurate word gap/silence timestamps. Silently ignored for the OpenAI API path."
+        ),
     )
 
     # --- extract-text (from transcript JSON) ---
@@ -754,6 +774,13 @@ def main():
     edit_parser.add_argument("--no-fillers", action="store_true", help="Keep filler words")
     edit_parser.add_argument("--no-repetitions", action="store_true", help="Keep repetitions")
     edit_parser.add_argument("--no-silence", action="store_true", help="Keep silences")
+    edit_parser.add_argument(
+        "--min-silence",
+        type=float,
+        default=1.5,
+        metavar="SEC",
+        help="Minimum silence duration to remove, in seconds (default 1.5)",
+    )
     edit_parser.add_argument("--local", action="store_true", help="Use local whisper")
     edit_parser.add_argument("--language",        help="Language code for transcription (e.g., 'en', 'es')"
     )
@@ -1103,6 +1130,7 @@ def cmd_master(args):
         sample_rate=args.sample_rate,
         channels=args.channels,
         bitrate=args.bitrate,
+        chain=args.chain,
         verbose=args.verbose,
     )
 
@@ -1151,6 +1179,7 @@ def cmd_denoise(args):
         noise_reduction=args.noise_reduction,
         noise_floor=args.noise_floor,
         track_noise=not args.no_track_noise,
+        bitrate=args.bitrate,
         verbose=args.verbose,
     )
 
@@ -1217,6 +1246,7 @@ def cmd_transcribe(args):
         language=args.language,
         model=args.model,
         speed=args.speed,
+        vad_filter=args.vad_filter,
     )
 
     output_format = args.format
@@ -1499,6 +1529,7 @@ def cmd_edit(args):
             remove_fillers=not args.no_fillers,
             remove_repetitions=not args.no_repetitions,
             remove_silence=not args.no_silence,
+            min_silence=args.min_silence,
             use_local_whisper=args.local,
             language=args.language,
             copy_codec=not args.reencode,

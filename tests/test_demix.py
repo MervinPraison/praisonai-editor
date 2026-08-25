@@ -189,3 +189,45 @@ def test_classify_vocal_type_empty_signal():
     # Should not raise; may return either label
     result = _classify_vocal_type(vocals, instruments)
     assert result in ("singing", "talking_over_music")
+
+
+# ---------------------------------------------------------------------------
+# has_demucs(): must degrade gracefully on ANY import failure, not just
+# ImportError -- a binary-incompatible transitive dependency (observed in
+# practice: a stale antlr4 wheel raising a plain Exception deep inside
+# demucs -> dora -> omegaconf's generated grammar parser) must not crash a
+# demix=True request. See pipeline.py's edit_video/edit_audio, both of which
+# treat demix as best-effort and expect has_demucs() to report False rather
+# than propagate.
+# ---------------------------------------------------------------------------
+
+def test_has_demucs_returns_false_on_plain_exception_not_just_importerror(monkeypatch):
+    import builtins
+    from praisonai_editor import _demix
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "demucs.pretrained" or name.startswith("demucs.pretrained"):
+            raise Exception("Could not deserialize ATN with version 3 (expected 4).")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    assert _demix.has_demucs() is False
+
+
+def test_has_demucs_still_returns_false_on_importerror(monkeypatch):
+    import builtins
+    from praisonai_editor import _demix
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "demucs.pretrained" or name.startswith("demucs.pretrained"):
+            raise ImportError("No module named 'demucs'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    assert _demix.has_demucs() is False

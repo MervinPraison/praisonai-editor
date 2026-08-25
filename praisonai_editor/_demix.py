@@ -28,12 +28,23 @@ from pathlib import Path
 
 
 def has_demucs() -> bool:
-    """Return True if demucs (and its torch/soundfile deps) are importable."""
+    """Return True if demucs (and its torch/soundfile deps) are importable.
+
+    Catches Exception, not just ImportError: demucs pulls in a transitive
+    chain (dora -> omegaconf -> antlr4) where a binary-incompatible wheel
+    can raise a plain Exception deep inside that chain (observed: a stale
+    antlr4 runtime raising "Could not deserialize ATN" from omegaconf's
+    generated grammar parser) rather than a clean ImportError. demix is a
+    best-effort, gracefully-degrading feature everywhere else it's used
+    (see detect.py's own "--demix requested but demucs is not installed"
+    fallback) -- a broken environment's dependency chain should degrade
+    the same way an absent one does, not crash the whole edit.
+    """
     try:
         import demucs.pretrained  # noqa: F401
         import soundfile          # noqa: F401
         return True
-    except ImportError:
+    except Exception:
         return False
 
 

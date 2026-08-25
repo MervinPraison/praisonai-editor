@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 import praisonai_editor.session as session_mod
+from praisonai_editor.models import TranscriptResult
 from praisonai_editor.session import history, session_exists
 from praisonai_editor.yaml_plan import PlanError, load_plan, run_plan
 
@@ -394,8 +395,75 @@ class TestRunPlanNoSession:
 
 
 # ---------------------------------------------------------------------------
-# concat's explicit sources: exception to implicit chaining
+# eval: a quality GATE, not a media-producing step (parity gap found by
+# audit -- CLI's `trim --verify` loop could already gate trim quality via
+# trim_eval.evaluate_trim_edges, but a YAML plan had no way to assert this
+# at all; `eval` closes that gap without the full retry loop).
 # ---------------------------------------------------------------------------
+
+
+class TestRunPlanEval:
+    """ASR is mocked (same convention as tests/test_trim_eval.py) -- this
+    is about the YAML op's wiring/gating behavior, not ASR accuracy."""
+
+    def _mock_eval_deps(self, monkeypatch, head_text, tail_text):
+        def fake_probe(_path):
+            return type("P", (), {"duration": 10.0})()
+
+        def fake_transcribe(path, **kwargs):
+            name = Path(path).name
+            return TranscriptResult(
+                text=tail_text if "tail" in name else head_text,
+                words=[], language="en", duration=1.0,
+            )
+
+        monkeypatch.setattr("praisonai_editor.trim_eval.probe_media", fake_probe)
+        monkeypatch.setattr("praisonai_editor.trim_eval._ffmpeg_extract_segment", lambda *a, **k: None)
+        monkeypatch.setattr("praisonai_editor.trim_eval.transcribe_audio", fake_transcribe)
+
+    def test_eval_raises_planerror_when_quality_gate_fails(self, tmp_path, monkeypatch, sessions_home):
+        self._mock_eval_deps(monkeypatch, head_text="hello there", tail_text="goodbye now")
+        src = tmp_path / "clip.mp3"
+        src.write_bytes(b"fake")
+
+        plan = {
+            "source": str(src),
+            "steps": [{"op": "eval", "params": {"tail_forbid": ["goodbye"]}}],
+        }
+
+        with pytest.raises(PlanError, match="quality gate"):
+            run_plan(plan)
+
+    def test_eval_with_strict_false_reports_without_halting(self, tmp_path, monkeypatch, sessions_home):
+        self._mock_eval_deps(monkeypatch, head_text="hello there", tail_text="goodbye now")
+        src = tmp_path / "clip.mp3"
+        src.write_bytes(b"fake")
+
+        plan = {
+            "source": str(src),
+            "steps": [{"op": "eval", "params": {"tail_forbid": ["goodbye"], "strict": False}}],
+            "output": str(src),   # eval doesn't render -- current stays == source
+        }
+
+        result = run_plan(plan)
+        assert result["steps"][0]["ok"] is False
+        assert any("goodbye" in f for f in result["steps"][0]["failures"])
+        # eval never alters the media -- the plan's output is still the source.
+        assert result["output_path"] == str(src)
+
+    def test_eval_passes_and_chains_current_unchanged(self, tmp_path, monkeypatch, sessions_home):
+        self._mock_eval_deps(monkeypatch, head_text="hello there", tail_text="thanks for watching")
+        src = tmp_path / "clip.mp3"
+        src.write_bytes(b"fake")
+
+        plan = {
+            "source": str(src),
+            "steps": [{"op": "eval", "params": {"head_contains": "hello"}}],
+        }
+
+        result = run_plan(plan)
+        assert result["steps"][0]["ok"] is True
+        assert result["output_path"] == str(src)
 
 
 @pytest.mark.skipif(not _ffmpeg_available(), reason="ffmpeg not installed")

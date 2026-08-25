@@ -162,6 +162,7 @@ class TestCli:
                 "--noise-reduction", "25",
                 "--noise-floor", "-35",
                 "--no-track-noise",
+                "--bitrate", "128k",
                 "--json",
             ],
         )
@@ -173,6 +174,7 @@ class TestCli:
             "noise_reduction": 25.0,
             "noise_floor": -35.0,
             "track_noise": False,
+            "bitrate": "128k",
             "verbose": False,
         }
 
@@ -197,6 +199,7 @@ class TestCli:
         assert captured["noise_reduction"] == 12.0
         assert captured["noise_floor"] == -50.0
         assert captured["track_noise"] is True
+        assert captured["bitrate"] == "192k"
 
 
 def _ffmpeg_available() -> bool:

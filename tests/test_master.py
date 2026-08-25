@@ -348,6 +348,7 @@ class TestCli:
             "sample_rate": 44100,
             "channels": 1,
             "bitrate": "128k",
+            "chain": None,
             "verbose": False,
         }
 
@@ -355,6 +356,37 @@ class TestCli:
         assert payload["preset"] == "music"
         assert payload["normalized"] is True
         assert payload["stats"]["input_i"] == -23.62
+
+    def test_master_chain_flag_repeats_into_a_list(self, monkeypatch, tmp_path, capsys):
+        import praisonai_editor.cli as cli
+
+        captured = {}
+
+        def fake_master_audio(input_path, output_path=None, **kwargs):
+            captured.update(kwargs)
+            return MasterResult(
+                path=str(tmp_path / "out.m4a"),
+                stats=LoudnessStats(-23.62, -6.47, 18.06, -34.01, 0.46),
+                preset="music",
+                chain=["highpass=f=80", "acompressor=threshold=-18dB"],
+                target_lufs=-16.0,
+                true_peak_db=-2.0,
+                normalized=True,
+            )
+
+        monkeypatch.setattr(master_mod, "master_audio", fake_master_audio)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "praisonai-editor", "master", "in.m4a",
+                "--chain", "highpass=f=80",
+                "--chain", "acompressor=threshold=-18dB",
+                "--json",
+            ],
+        )
+        assert cli.main() == 0
+        assert captured["chain"] == ["highpass=f=80", "acompressor=threshold=-18dB"]
 
     def test_master_defaults(self, monkeypatch, tmp_path):
         import praisonai_editor.cli as cli
