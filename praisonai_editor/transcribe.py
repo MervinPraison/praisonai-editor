@@ -467,7 +467,7 @@ def transcribe_audio(
     """
     if use_local:
         transcriber = LocalTranscriber()
-        return transcriber.transcribe(
+        result = transcriber.transcribe(
             audio_path,
             language=language,
             model=model or "base",
@@ -476,9 +476,12 @@ def transcribe_audio(
         )
     else:
         transcriber = OpenAITranscriber()
-        return transcriber.transcribe(
+        result = transcriber.transcribe(
             audio_path,
             language=language,
             model=model or DEFAULT_OPENAI_TRANSCRIPTION_MODEL,
             speed=speed,
         )
+
+    from .audio_tag import tag_source_audio
+    return tag_source_audio(result, audio_path)

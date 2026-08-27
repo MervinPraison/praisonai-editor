@@ -78,14 +78,22 @@ class TranscriptResult:
     words: List[Word] = field(default_factory=list)
     language: str = "en"
     duration: float = 0.0
+    # Identifies the exact audio file this transcript was made from
+    # (filename/size/content-fingerprint) -- see audio_tag.py. Optional and
+    # omitted from to_dict() when unset so existing transcript JSON files
+    # stay byte-for-byte unaffected by this field's addition.
+    source_audio: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d: Dict[str, Any] = {
             "text": self.text,
             "words": [w.to_dict() for w in self.words],
             "language": self.language,
             "duration": self.duration,
         }
+        if self.source_audio:
+            d["source_audio"] = self.source_audio
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TranscriptResult":
@@ -103,6 +111,7 @@ class TranscriptResult:
             words=words,
             language=str(data.get("language", "en") or "en"),
             duration=float(data.get("duration", 0.0)),
+            source_audio=data.get("source_audio") or None,
         )
 
     def to_srt(self) -> str:

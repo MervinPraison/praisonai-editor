@@ -84,6 +84,8 @@ def prompt_edit(
         else:
             transcriber = OpenAITranscriber()
         transcript = transcriber.transcribe(input_path)
+        from .audio_tag import tag_source_audio
+        tag_source_audio(transcript, input_path)
 
         # Save transcript for future cache
         json_path = artifacts_dir / "transcript.json"

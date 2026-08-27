@@ -209,6 +209,8 @@ def edit_audio(
             else:
                 transcriber = OpenAITranscriber()
             transcript = transcriber.transcribe(input_path, language=language)
+            from .audio_tag import tag_source_audio
+            tag_source_audio(transcript, input_path)
         else:
             if verbose:
                 print("[2/3] Transcript loaded from cache", flush=True)
@@ -395,6 +397,8 @@ def edit_video(
             else:
                 transcriber = OpenAITranscriber()
             transcript = transcriber.transcribe(input_path, language=language)
+            from .audio_tag import tag_source_audio
+            tag_source_audio(transcript, input_path)
         else:
             if verbose:
                 print("[2/4] Transcript loaded from cache", flush=True)

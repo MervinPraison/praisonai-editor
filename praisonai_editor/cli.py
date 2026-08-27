@@ -364,6 +364,26 @@ def main():
         ),
     )
 
+    # --- resolve-audio (find a transcript's audio via its source_audio tag) ---
+    resolve_parser = subparsers.add_parser(
+        "resolve-audio",
+        help="Find the audio file a transcript's source_audio tag identifies",
+    )
+    resolve_parser.add_argument("input", help="Transcript JSON file")
+    resolve_parser.add_argument(
+        "--search-dir",
+        "-d",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="Directory to search (repeatable). Default: the transcript's own directory.",
+    )
+    resolve_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print all ranked candidates as JSON instead of just the best match's path",
+    )
+
     # --- extract-text (from transcript JSON) ---
     extract_parser = subparsers.add_parser(
         "extract-text",
@@ -918,6 +938,8 @@ def main():
             return cmd_word_gaps(args)
         elif args.command == "transcribe":
             return cmd_transcribe(args)
+        elif args.command == "resolve-audio":
+            return cmd_resolve_audio(args)
         elif args.command == "extract-text":
             return cmd_extract_text(args)
         elif args.command == "plan":
@@ -1220,6 +1242,38 @@ def cmd_word_gaps(args):
             f"✓ Shortened {result.artifacts['gaps_shortened']} gap(s) "
             f"(> {args.threshold}s → {args.target}s) → {result.output_path}"
         )
+    return 0
+
+
+def cmd_resolve_audio(args):
+    from .audio_tag import find_matching_audio
+    from .models import TranscriptResult
+
+    inp = Path(args.input)
+    if not inp.exists():
+        raise FileNotFoundError(f"Transcript not found: {args.input}")
+
+    tr = TranscriptResult.from_dict(json.loads(inp.read_text(encoding="utf-8")))
+    if not tr.source_audio:
+        raise ValueError(
+            f"{args.input} has no source_audio tag -- it predates this feature "
+            "or was hand-authored. Nothing to resolve."
+        )
+
+    search_dirs = args.search_dir or [str(inp.resolve().parent)]
+    candidates = find_matching_audio(
+        tr.source_audio, search_dirs, expected_duration=tr.duration or None
+    )
+
+    if args.json:
+        print(json.dumps({"source_audio": tr.source_audio, "candidates": candidates}, indent=2))
+        return 0
+
+    if not candidates:
+        print(f"No match found for {tr.source_audio.get('filename')!r} in: {', '.join(search_dirs)}")
+        return 1
+    best = candidates[0]
+    print(best["path"])
     return 0
 
 
