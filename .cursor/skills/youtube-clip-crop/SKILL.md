@@ -45,10 +45,24 @@ Example: `f0cDrN8ZwVc_clip1_0050-2550.m4a`
 
 ```
 - [ ] Skip download if ~/Downloads/{VIDEO_ID}_full.m4a exists
-- [ ] Download (conda yt-dlp) if missing
+- [ ] Download (conda yt-dlp) if missing — pass --ffmpeg-location
+- [ ] If only .webm exists, convert to m4a with ffmpeg
 - [ ] Crop each range (ffmpeg stream copy)
 - [ ] ffprobe duration check per clip
 - [ ] Reply with reference table
+```
+
+## Preferred: run the script
+
+```bash
+cd ~/praisonai-audio-editor
+./scripts/youtube-clip-crop.sh 'URL' START END [START END ...]
+```
+
+Validate existing clips:
+
+```bash
+./scripts/validate-youtube-clips.sh START END FILE [START END FILE ...]
 ```
 
 ## Step 1 — Download
@@ -56,14 +70,23 @@ Example: `f0cDrN8ZwVc_clip1_0050-2550.m4a`
 Skip if `~/Downloads/{VIDEO_ID}_full.m4a` already exists.
 
 ```bash
+FFMPEG="$(command -v ffmpeg)"
 zsh -c "source $(conda info --base)/etc/profile.d/conda.sh && conda activate test && \
   python3 -m yt_dlp -f 'ba/b' --no-playlist --concurrent-fragments 8 --no-part \
+  --ffmpeg-location '${FFMPEG}' \
   -x --audio-format m4a \
   -o '/Users/praison/Downloads/{VIDEO_ID}_full.%(ext)s' 'URL'"
 ```
 
 403 → `pip install -U yt-dlp` + `--extractor-args 'youtube:player_client=android,web'`.  
 **No `--print` on download** — it can skip writing the file.
+
+**Webm fallback** — if yt-dlp leaves `{VIDEO_ID}_full.webm` only (ffmpeg missing from conda PATH):
+
+```bash
+ffmpeg -loglevel error -y -nostdin -i ~/Downloads/{VIDEO_ID}_full.webm \
+  -c:a aac -b:a 192k ~/Downloads/{VIDEO_ID}_full.m4a
+```
 
 ## Step 2 — Crop
 
@@ -73,7 +96,7 @@ One ffmpeg call per range:
 FULL="$HOME/Downloads/{VIDEO_ID}_full.m4a"
 OUT="$HOME/praisonai-audio-editor"
 
-ffmpeg -y -nostdin -i "$FULL" -ss START -to END -map 0:a:0 -c copy \
+ffmpeg -loglevel error -y -nostdin -i "$FULL" -ss START -to END -map 0:a:0 -c copy \
   "$OUT/{VIDEO_ID}_clip{N}_{START}-{END}.m4a"
 ```
 
@@ -85,7 +108,7 @@ End of video: omit `-to`.
 ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 CLIP.m4a
 ```
 
-Expected duration ≈ `END − START`. Report `H:MM:SS` in the reference table.
+Expected duration ≈ `END − START` (±2 s). Report `H:MM:SS` in the reference table.
 
 ## Step 4 — Reference table (always)
 

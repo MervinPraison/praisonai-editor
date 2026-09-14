@@ -31,19 +31,23 @@ MIN_CORE = float(os.getenv("CUT_SILENCE_MIN_CORE", "0.4"))
 
 
 def find_ffmpeg() -> str:
-    for name in ("ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
-        path = shutil.which(name) if "/" not in name else name
-        if path and Path(path).exists():
-            return path
-    raise FileNotFoundError("ffmpeg not found")
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from praisonai_editor.probe import _find_ffmpeg
+
+    return _find_ffmpeg()
 
 
-def probe_duration(ffmpeg: str, path: str) -> float:
-    ffprobe = Path(ffmpeg).with_name("ffprobe")
-    if not ffprobe.exists():
-        ffprobe = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
+def probe_duration(_ffmpeg: str, path: str) -> float:
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from praisonai_editor.probe import _find_ffprobe
+
+    ffprobe = _find_ffprobe()
     out = subprocess.check_output(
-        [str(ffprobe), "-v", "error", "-show_entries", "format=duration",
+        [ffprobe, "-v", "error", "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", path],
         text=True,
     ).strip()

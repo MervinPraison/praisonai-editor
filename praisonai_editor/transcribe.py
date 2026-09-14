@@ -8,32 +8,22 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import List, Optional
 
 from .models import TranscriptResult, Word
+from .probe import _find_ffmpeg, _find_ffprobe
 
 # Max file size for Whisper API (24MB with safety margin)
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
-# Chunk duration in seconds (~10 minutes → fits within 24MB as MP3)
-CHUNK_DURATION_SECS = 600
+# Chunk duration in seconds (~5 minutes — API completes reliably; 600s Tamil chunks often stall)
+CHUNK_DURATION_SECS = 300
 # Force chunking when audio exceeds this duration (regardless of file size).
-# 40-min audio compresses to ~19 MB (under 25 MB limit) but times out API.
-MAX_AUDIO_DURATION_SECS = 600
+MAX_AUDIO_DURATION_SECS = 300
 
 # OpenAI speech-to-text model for ``OpenAITranscriber`` / API ``transcribe_audio`` (when not ``use_local``).
 DEFAULT_OPENAI_TRANSCRIPTION_MODEL = "whisper-1"
-
-
-def _find_ffmpeg() -> str:
-    """Find ffmpeg executable."""
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg:
-        return ffmpeg
-    for path in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]:
-        if Path(path).exists():
-            return path
-    raise FileNotFoundError("ffmpeg not found")
 
 
 def _atempo_filter(speed: float) -> str | None:
@@ -76,7 +66,7 @@ def _extract_audio_mp3(media_path: str, output_path: str, *, speed: float = 1.0)
     """Extract audio from media file to compressed MP3 (mono 64k) for upload."""
     ffmpeg = _find_ffmpeg()
     af = _atempo_filter(speed)
-    cmd = [ffmpeg, "-y", "-i", media_path, "-vn"]
+    cmd = [ffmpeg, "-y", "-nostdin", "-i", media_path, "-vn"]
     if af:
         cmd.extend(["-af", af])
     cmd.extend([
@@ -93,7 +83,7 @@ def _extract_audio_wav(media_path: str, output_path: str) -> None:
     """Extract audio from media file to WAV (16kHz mono) for Whisper."""
     ffmpeg = _find_ffmpeg()
     cmd = [
-        ffmpeg, "-y",
+        ffmpeg, "-y", "-nostdin",
         "-i", media_path,
         "-vn",
         "-acodec", "pcm_s16le",
@@ -108,14 +98,15 @@ def _split_audio(audio_path: str, chunk_dir: str, chunk_secs: int = CHUNK_DURATI
     """Split audio into chunks of chunk_secs duration."""
     ffmpeg = _find_ffmpeg()
     # Get duration
+    ffprobe = _find_ffprobe()
     probe_cmd = [
-        shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe",
+        ffprobe,
         "-v", "quiet",
         "-show_entries", "format=duration",
         "-of", "json",
         audio_path,
     ]
-    result = subprocess.run(probe_cmd, capture_output=True, text=True)
+    result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
     duration = float(json.loads(result.stdout)["format"]["duration"])
 
     n_chunks = math.ceil(duration / chunk_secs)
@@ -125,7 +116,7 @@ def _split_audio(audio_path: str, chunk_dir: str, chunk_secs: int = CHUNK_DURATI
         start = i * chunk_secs
         chunk_path = os.path.join(chunk_dir, f"chunk_{i:04d}.mp3")
         cmd = [
-            ffmpeg, "-y",
+            ffmpeg, "-y", "-nostdin",
             "-ss", str(start),
             "-i", audio_path,
             "-t", str(chunk_secs),
@@ -221,7 +212,14 @@ class OpenAITranscriber:
                     f"(~{CHUNK_DURATION_SECS:.0f}s audio, upload + API wait)...",
                     flush=True,
                 )
+                t0 = time.monotonic()
                 result = self._call_api(chunk_path, model, language)
+                elapsed = time.monotonic() - t0
+                print(
+                    f"OpenAI Whisper: chunk {i + 1}/{len(chunk_paths)} done "
+                    f"({elapsed:.0f}s, {len(result.words)} words)",
+                    flush=True,
+                )
 
                 all_texts.append(result.text)
                 detected_language = result.language

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,18 +12,67 @@ from typing import Optional
 from .models import ProbeResult
 
 
-def _find_ffprobe() -> str:
-    """Find ffprobe executable."""
-    ffprobe = shutil.which("ffprobe")
-    if ffprobe:
-        return ffprobe
+def _smoke_test(binary: str, *, timeout: float = 10.0) -> bool:
+    """Return True if *binary* runs (broken dyld chains fail fast)."""
+    try:
+        subprocess.run(
+            [binary, "-version"],
+            capture_output=True,
+            check=True,
+            timeout=timeout,
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return False
 
-    for path in ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/bin/ffprobe"]:
-        if Path(path).exists():
+
+def _candidate_binaries(name: str) -> list[str]:
+    """Ordered search paths for ffmpeg/ffprobe."""
+    candidates: list[str] = []
+    env_key = "FFMPEG_PATH" if name == "ffmpeg" else "FFPROBE_PATH"
+    if env := os.environ.get(env_key):
+        candidates.append(env)
+    if which := shutil.which(name):
+        candidates.append(which)
+    home = Path.home()
+    for prefix in (home / "miniconda3/bin", home / "anaconda3/bin"):
+        candidates.append(str(prefix / name))
+    candidates.extend([
+        f"/opt/homebrew/bin/{name}",
+        f"/usr/local/bin/{name}",
+        f"/usr/bin/{name}",
+    ])
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for path in candidates:
+        if path not in seen:
+            seen.add(path)
+            ordered.append(path)
+    return ordered
+
+
+def _find_ffmpeg() -> str:
+    """Find a working ffmpeg executable."""
+    for path in _candidate_binaries("ffmpeg"):
+        if Path(path).exists() and _smoke_test(path):
             return path
-
     raise FileNotFoundError(
-        "ffprobe not found. Install FFmpeg: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
+        "ffmpeg not found or broken. Install FFmpeg or set FFMPEG_PATH "
+        "(e.g. export PATH=\"$HOME/miniconda3/bin:$PATH\")."
+    )
+
+
+def _find_ffprobe() -> str:
+    """Find ffprobe paired with the same install as ffmpeg when possible."""
+    ffmpeg = _find_ffmpeg()
+    sibling = Path(ffmpeg).with_name("ffprobe")
+    if sibling.exists() and _smoke_test(str(sibling)):
+        return str(sibling)
+    for path in _candidate_binaries("ffprobe"):
+        if Path(path).exists() and _smoke_test(path):
+            return path
+    raise FileNotFoundError(
+        "ffprobe not found or broken. Install FFmpeg or set FFPROBE_PATH."
     )
 
 

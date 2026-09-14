@@ -58,3 +58,26 @@ Parse `1:8:53` as `1:08:53`.
 ## Re-download skip
 
 If `~/Downloads/jfSN0rEkd9k_full.m4a` already exists from a prior run, go straight to Step 2 (crop).
+
+---
+
+## Webm fallback
+
+If yt-dlp downloads `{VIDEO_ID}_full.webm` but post-processing fails (`ffprobe and ffmpeg not found`), convert then crop:
+
+```bash
+ffmpeg -loglevel error -y -nostdin -i ~/Downloads/xfEk4bC35-0_full.webm \
+  -c:a aac -b:a 192k ~/Downloads/xfEk4bC35-0_full.m4a
+```
+
+Always pass `--ffmpeg-location "$(command -v ffmpeg)"` to yt-dlp to avoid this.
+
+---
+
+## Validate clips
+
+```bash
+cd ~/praisonai-audio-editor
+./scripts/validate-youtube-clips.sh \
+  "42:15" "1:44:03" xfEk4bC35-0_clip1_4215-10403.m4a
+```

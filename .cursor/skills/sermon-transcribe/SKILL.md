@@ -7,6 +7,8 @@ description: Full local sermon audio pipeline — crop, remove ranges, silence c
 
 Run on the user's Mac. **Do not stop at instructions.**
 
+**Phone memo / noisy podcast audio with crop times?** → use [podcast-phone-audio](../podcast-phone-audio/SKILL.md) instead (denoise + phone EQ + chunked transcribe).
+
 ## Golden rule
 
 When the user provides **local audio** (`.wav` / `.m4a`) and asks you to process / transcribe / prepare for Spotify or article — **run the full pipeline below in order**. Skip a step **only** if the user explicitly says so (e.g. "don't cut silence") or the file is already the output of that step (e.g. already `_ALTERED`).

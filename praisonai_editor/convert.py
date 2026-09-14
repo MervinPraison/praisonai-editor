@@ -2,24 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
-
-def _find_ffmpeg() -> str:
-    """Find ffmpeg executable."""
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg:
-        return ffmpeg
-
-    for path in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]:
-        if Path(path).exists():
-            return path
-
-    raise FileNotFoundError(
-        "ffmpeg not found. Install FFmpeg: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
-    )
+from .probe import _find_ffmpeg, _find_ffprobe
 
 
 class FFmpegConverter:
