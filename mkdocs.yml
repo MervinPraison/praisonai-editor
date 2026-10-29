@@ -7,7 +7,7 @@ repo_name: praisonai-editor
 edit_uri: edit/main/docs/
 
 theme:
-  name: material
+  name: !ENV [PRAISONAI_THEME, material]
   logo: material/waveform
   favicon: material/waveform
   palette:
