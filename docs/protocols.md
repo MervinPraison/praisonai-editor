@@ -43,6 +43,6 @@ Pick the protocol you want to replace:
 
 ## Related pages
 
-- [Python API Overview](https://editor.praison.ai/docs/api.md)
 - [Custom Transcriber](https://editor.praison.ai/docs/protocols/transcriber.md)
 - [Custom Editor](https://editor.praison.ai/docs/protocols/editor.md)
+- [Python API Overview](https://editor.praison.ai/docs/api.md)

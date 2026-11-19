@@ -1,6 +1,21 @@
 ---
 hide:
-  - navigation
+- navigation
+layout: home
+title: 🎙️ PraisonAI Editor
+description: AI-powered audio & video editor — transcribe, clean, and edit media with
+  one command
+hero:
+  name: 🎙️ PraisonAI Editor
+  text: 🎙️ PraisonAI Editor
+  tagline: AI-powered audio & video editor — transcribe, clean, and edit media with
+    one command
+  actions:
+  - text: Quick start
+    link: quickstart.md
+  - text: View on GitHub
+    link: https://github.com/MervinPraison/praisonai-editor
+    theme: alt
 ---
 
 # PraisonAI Editor

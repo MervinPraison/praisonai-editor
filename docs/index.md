@@ -1,6 +1,8 @@
-# PraisonAI Editor
+# 🎙️ PraisonAI Editor
 
-> Word-level timestamps in SRT, TXT, or JSON. OpenAI Whisper + local faster-whisper.
+> AI-powered audio & video editor — transcribe, clean, and edit media with one command
+
+# PraisonAI Editor
 
 > **AI-powered audio & video editor** — transcribe, clean, and edit media with one command.
 

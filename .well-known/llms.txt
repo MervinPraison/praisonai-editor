@@ -2,33 +2,38 @@
 
 > AI-powered audio & video editor — transcribe, clean, and edit media with one command
 
-## Docs
+## Get started
 
-- [PraisonAI Editor](https://editor.praison.ai/docs/index.md): Word-level timestamps in SRT, TXT, or JSON. OpenAI Whisper + local faster-whisper.
-- [Installation](https://editor.praison.ai/docs/install.md): === "Ubuntu / Debian"
+- [🎙️ PraisonAI Editor](https://editor.praison.ai/docs/index.md): AI-powered audio & video editor — transcribe, clean, and edit media with one command
 - [Quick Start](https://editor.praison.ai/docs/quickstart.md): Get from zero to an edited file in under 2 minutes.
-- [Artifacts & Caching](https://editor.praison.ai/docs/artifacts.md): Every edit or transcribe run saves artifacts to ~/.praisonai/editor/{filename}/.
+- [Installation](https://editor.praison.ai/docs/install.md): === "Ubuntu / Debian"
 
-## Agent
+## CLI Commands
 
-- [AI Agent Prompt-Based Editing](https://editor.praison.ai/docs/agent/prompt-edit.md): Edit media using plain English instructions. An AI agent interprets your prompt and creates a precise edit plan.
-- [Agent Tools](https://editor.praison.ai/docs/agent/tools.md): Three built-in tools for use with PraisonAI agents. They auto-register via the praisonaiagents.tools entry-point.
-
-## Python API Overview
-
-- [Python API Overview](https://editor.praison.ai/docs/api.md): Use praisonai-editor directly from Python — no CLI needed.
-- [`edit_media()` — Main API](https://editor.praison.ai/docs/api/edit_media.md): === "Music extraction"
-- [Data Models](https://editor.praison.ai/docs/api/models.md): All models live in praisonai_editor.models and are plain Python dataclasses.
-- [Edit Plans API](https://editor.praison.ai/docs/api/plans.md): An EditPlan is a list of segments with keep or remove actions.
-- [Transcription API](https://editor.praison.ai/docs/api/transcription.md): Convenience function. Automatically chooses OpenAI or local Whisper.
-
-## Commands
-
-- [`convert` — Convert between formats](https://editor.praison.ai/docs/commands/convert.md): Convert between audio and video formats using FFmpeg.
-- [`edit` — Full editing pipeline](https://editor.praison.ai/docs/commands/edit.md): The main command. Runs transcription → content detection → plan → render in one shot.
-- [`plan` — Preview the edit plan](https://editor.praison.ai/docs/commands/plan.md): See what would be removed before actually editing the file.
 - [`probe` — Inspect media metadata](https://editor.praison.ai/docs/commands/probe.md): Use probe to quickly check the metadata of any audio or video file.
+- [`convert` — Convert between formats](https://editor.praison.ai/docs/commands/convert.md): Convert between audio and video formats using FFmpeg.
 - [`transcribe` — Audio/video to text](https://editor.praison.ai/docs/commands/transcribe.md): Transcribe any audio or video file with word-level timestamps.
+- [`plan` — Preview the edit plan](https://editor.praison.ai/docs/commands/plan.md): See what would be removed before actually editing the file.
+- [`edit` — Full editing pipeline](https://editor.praison.ai/docs/commands/edit.md): The main command. Runs transcription → content detection → plan → render in one shot.
+
+## 🎛️ Presets
+
+- [Presets Overview](https://editor.praison.ai/docs/presets.md): Presets are named editing profiles. Pick the one closest to your use case.
+- [`podcast` preset](https://editor.praison.ai/docs/presets/podcast.md): Best for: podcast recordings, interviews, solo recordings.
+- [`meeting` preset](https://editor.praison.ai/docs/presets/meeting.md): Best for: team meetings, standups, recorded calls.
+- [`course` preset](https://editor.praison.ai/docs/presets/course.md): Best for: online courses, lectures, tutorials, screencasts.
+- [`clean` preset](https://editor.praison.ai/docs/presets/clean.md): Maximum cleanup. Tightest silence removal.
+- [`songs_only` preset](https://editor.praison.ai/docs/presets/songs_only.md): Extract only the singing/music portions from a recording. Removes speech, talking, and silence.
+- [`speech_only` preset](https://editor.praison.ai/docs/presets/speech_only.md): Extract only speech portions — removes music, singing, and silence.
+- [`no_silence` preset](https://editor.praison.ai/docs/presets/no_silence.md): Keep everything — just remove silent gaps between segments.
+
+## 🔍 Content Detection
+
+- [Content Detection Overview](https://editor.praison.ai/docs/detection.md): Content detection classifies each second of your media into types like speech, music, singing, silence — enabling smart content-based editing.
+- [Ensemble detector (`--detector ensemble`)](https://editor.praison.ai/docs/detection/ensemble.md): The recommended detector. Combines multiple detectors and uses a voting algorithm to pick the most confident classification for each segment.
+- [INA Speech Segmenter (`--detector ina`)](https://editor.praison.ai/docs/detection/ina.md): Uses a CNN (Convolutional Neural Network) trained on broadcast media to detect speech vs music vs noise vs silence.
+- [Librosa spectral detector (`--detector librosa`)](https://editor.praison.ai/docs/detection/librosa.md): Uses spectral features (RMS energy, spectral centroid, zero-crossing rate) from librosa to classify segments.
+- [FFmpeg heuristic detector (`--detector ffmpeg`)](https://editor.praison.ai/docs/detection/ffmpeg.md): Fastest detector. Uses FFmpeg's astats filter to get RMS/peak energy statistics per segment.
 
 ## 🎵 Stem Separation (Demix)
 
@@ -36,31 +41,29 @@
 - [Stem Cache](https://editor.praison.ai/docs/demix/cache.md): Demucs stem separation is slow on CPU (5–15 min for a 40-min file). The stem cache ensures it only runs once per file.
 - [Primary Zone Detection (`--primary-zone`)](https://editor.praison.ai/docs/demix/primary-zone.md): Automatically finds and extracts the main singing section from a long recording.
 
-## Content Detection Overview
+## 🤖 AI Agent Editing
 
-- [Content Detection Overview](https://editor.praison.ai/docs/detection.md): Content detection classifies each second of your media into types like speech, music, singing, silence — enabling smart content-based editing.
-- [Ensemble detector (`--detector ensemble`)](https://editor.praison.ai/docs/detection/ensemble.md): The recommended detector. Combines multiple detectors and uses a voting algorithm to pick the most confident classification for each segment.
-- [FFmpeg heuristic detector (`--detector ffmpeg`)](https://editor.praison.ai/docs/detection/ffmpeg.md): Fastest detector. Uses FFmpeg's astats filter to get RMS/peak energy statistics per segment.
-- [INA Speech Segmenter (`--detector ina`)](https://editor.praison.ai/docs/detection/ina.md): Uses a CNN (Convolutional Neural Network) trained on broadcast media to detect speech vs music vs noise vs silence.
-- [Librosa spectral detector (`--detector librosa`)](https://editor.praison.ai/docs/detection/librosa.md): Uses spectral features (RMS energy, spectral centroid, zero-crossing rate) from librosa to classify segments.
+- [AI Agent Prompt-Based Editing](https://editor.praison.ai/docs/agent/prompt-edit.md): Edit media using plain English instructions. An AI agent interprets your prompt and creates a precise edit plan.
+- [Agent Tools](https://editor.praison.ai/docs/agent/tools.md): Three built-in tools for use with PraisonAI agents. They auto-register via the praisonaiagents.tools entry-point.
 
-## Presets Overview
+## 🐍 Python API
 
-- [Presets Overview](https://editor.praison.ai/docs/presets.md): Presets are named editing profiles. Pick the one closest to your use case.
-- [`clean` preset](https://editor.praison.ai/docs/presets/clean.md): Maximum cleanup. Tightest silence removal.
-- [`course` preset](https://editor.praison.ai/docs/presets/course.md): Best for: online courses, lectures, tutorials, screencasts.
-- [`meeting` preset](https://editor.praison.ai/docs/presets/meeting.md): Best for: team meetings, standups, recorded calls.
-- [`no_silence` preset](https://editor.praison.ai/docs/presets/no_silence.md): Keep everything — just remove silent gaps between segments.
-- [`podcast` preset](https://editor.praison.ai/docs/presets/podcast.md): Best for: podcast recordings, interviews, solo recordings.
-- [`songs_only` preset](https://editor.praison.ai/docs/presets/songs_only.md): Extract only the singing/music portions from a recording. Removes speech, talking, and silence.
-- [`speech_only` preset](https://editor.praison.ai/docs/presets/speech_only.md): Extract only speech portions — removes music, singing, and silence.
+- [Python API Overview](https://editor.praison.ai/docs/api.md): Use praisonai-editor directly from Python — no CLI needed.
+- [`edit_media()` — Main API](https://editor.praison.ai/docs/api/edit_media.md): === "Music extraction"
+- [Transcription API](https://editor.praison.ai/docs/api/transcription.md): Convenience function. Automatically chooses OpenAI or local Whisper.
+- [Edit Plans API](https://editor.praison.ai/docs/api/plans.md): An EditPlan is a list of segments with keep or remove actions.
+- [Data Models](https://editor.praison.ai/docs/api/models.md): All models live in praisonai_editor.models and are plain Python dataclasses.
 
-## Extending with Protocols
+## 🔌 Extending (Protocols)
 
 - [Extending with Protocols](https://editor.praison.ai/docs/protocols.md): Every stage of the pipeline is defined as a Python Protocol — swap in your own implementation without touching core code.
+- [Custom Transcriber](https://editor.praison.ai/docs/protocols/transcriber.md): Replace OpenAI Whisper with any speech-to-text engine.
 - [Custom Editor](https://editor.praison.ai/docs/protocols/editor.md): Write your own logic for creating edit plans (what to keep and remove).
 - [Custom Renderer](https://editor.praison.ai/docs/protocols/renderer.md): Replace FFmpeg rendering with your own engine (e.g., moviepy, pydub).
-- [Custom Transcriber](https://editor.praison.ai/docs/protocols/transcriber.md): Replace OpenAI Whisper with any speech-to-text engine.
+
+## 📦 Artifacts & Cache
+
+- [Artifacts & Caching](https://editor.praison.ai/docs/artifacts.md): Every edit or transcribe run saves artifacts to ~/.praisonai/editor/{filename}/.
 
 ## Optional
 

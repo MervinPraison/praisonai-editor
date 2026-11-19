@@ -68,5 +68,5 @@ plan, blocks, all_events = create_content_plan(
 ## Related pages
 
 - [`songs_only` preset](https://editor.praison.ai/docs/presets/songs_only.md)
+- [INA Speech Segmenter (`--detector ina`)](https://editor.praison.ai/docs/detection/ina.md)
 - [`speech_only` preset](https://editor.praison.ai/docs/presets/speech_only.md)
-- [`edit` — Full editing pipeline](https://editor.praison.ai/docs/commands/edit.md)
