@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <script id="aiui-canonical-url">(function(){var p=location.pathname.replace(/\/+$/, '')||'/';if(p!==location.pathname){history.replaceState(null,'',p+location.search+location.hash);}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Content detection classifies each second of your media into types like speech, music, singing, silence — enabling smart content-based editing." />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>Content Detection Overview | 🎙️ PraisonAI Editor</title>
+  <script>
+    (function(){try{var t=localStorage.getItem('aiui-theme-preference');var d=true;if(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)||(!t&&d))document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.remove('dark');}catch(e){}})();
+  </script>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script type="module" crossorigin src="/assets/index.js?v=5f6fb581b6"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-PPVm8Dsz.js">
+  <link rel="stylesheet" crossorigin href="/assets/index.css?v=241293edc9">
+  <link rel="canonical" href="https://editor.praison.ai/docs/detection" />
+  <meta property="og:title" content="Content Detection Overview | 🎙️ PraisonAI Editor" />
+  <meta property="og:description" content="Content detection classifies each second of your media into types like speech, music, singing, silence — enabling smart content-based editing." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="🎙️ PraisonAI Editor" />
+  <meta name="twitter:title" content="Content Detection Overview | 🎙️ PraisonAI Editor" />
+  <meta name="twitter:description" content="Content detection classifies each second of your media into types like speech, music, singing, silence — enabling smart content-based editing." />
+  <meta property="og:url" content="https://editor.praison.ai/docs/detection" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="alternate" type="text/markdown" href="https://editor.praison.ai/docs/detection.md" />
+  <script type="application/ld+json" id="aiui-jsonld" data-page="https://editor.praison.ai/docs/detection">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://editor.praison.ai/#organization", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/"}, {"@type": "WebSite", "@id": "https://editor.praison.ai/#website", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/", "publisher": {"@id": "https://editor.praison.ai/#organization"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://editor.praison.ai/?q={search_term_string}"}, "query-input": "required name=search_term_string"}}, {"@type": "TechArticle", "@id": "https://editor.praison.ai/docs/detection#article", "headline": "Content Detection Overview", "description": "Content detection classifies each second of your media into types like speech, music, singing, silence — enabling smart content-based editing.", "url": "https://editor.praison.ai/docs/detection", "mainEntityOfPage": "https://editor.praison.ai/docs/detection", "isPartOf": {"@id": "https://editor.praison.ai/#website"}, "publisher": {"@id": "https://editor.praison.ai/#organization"}}]}</script>
+</head>
+
+<body>
+  <div id="root"><noscript><nav aria-label="Documentation"><ul><li><a href="https://editor.praison.ai/">PraisonAI Editor</a></li><li><a href="https://editor.praison.ai/docs/install">Installation</a></li><li><a href="https://editor.praison.ai/docs/quickstart">Quick Start</a></li><li><a href="https://editor.praison.ai/docs/agent/prompt-edit">AI Agent Prompt-Based Editing</a></li><li><a href="https://editor.praison.ai/docs/agent/tools">Agent Tools</a></li><li><a href="https://editor.praison.ai/docs/api">Python API Overview</a></li><li><a href="https://editor.praison.ai/docs/api/edit_media">`edit_media()` — Main API</a></li><li><a href="https://editor.praison.ai/docs/api/models">Data Models</a></li><li><a href="https://editor.praison.ai/docs/api/plans">Edit Plans API</a></li><li><a href="https://editor.praison.ai/docs/api/transcription">Transcription API</a></li><li><a href="https://editor.praison.ai/docs/artifacts">Artifacts &amp; Caching</a></li><li><a href="https://editor.praison.ai/docs/commands/convert">`convert` — Convert between formats</a></li><li><a href="https://editor.praison.ai/docs/commands/edit">`edit` — Full editing pipeline</a></li><li><a href="https://editor.praison.ai/docs/commands/plan">`plan` — Preview the edit plan</a></li><li><a href="https://editor.praison.ai/docs/commands/probe">`probe` — Inspect media metadata</a></li><li><a href="https://editor.praison.ai/docs/commands/transcribe">`transcribe` — Audio/video to text</a></li><li><a href="https://editor.praison.ai/docs/demix">🎵 Stem Separation (Demix)</a></li><li><a href="https://editor.praison.ai/docs/demix/cache">Stem Cache</a></li><li><a href="https://editor.praison.ai/docs/demix/primary-zone">Primary Zone Detection (`--primary-zone`)</a></li><li><a href="https://editor.praison.ai/docs/detection">Content Detection Overview</a></li><li><a href="https://editor.praison.ai/docs/detection/ensemble">Ensemble detector (`--detector ensemble`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ffmpeg">FFmpeg heuristic detector (`--detector ffmpeg`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ina">INA Speech Segmenter (`--detector ina`)</a></li><li><a href="https://editor.praison.ai/docs/detection/librosa">Librosa spectral detector (`--detector librosa`)</a></li><li><a href="https://editor.praison.ai/docs/presets">Presets Overview</a></li><li><a href="https://editor.praison.ai/docs/presets/clean">`clean` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/course">`course` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/meeting">`meeting` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/no_silence">`no_silence` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/podcast">`podcast` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/songs_only">`songs_only` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/speech_only">`speech_only` preset</a></li><li><a href="https://editor.praison.ai/docs/protocols">Extending with Protocols</a></li><li><a href="https://editor.praison.ai/docs/protocols/editor">Custom Editor</a></li><li><a href="https://editor.praison.ai/docs/protocols/renderer">Custom Renderer</a></li><li><a href="https://editor.praison.ai/docs/protocols/transcriber">Custom Transcriber</a></li></ul></nav><h1>Content Detection Overview</h1>
+<p>Content detection classifies each second of your media into types like <code>speech</code>, <code>music</code>, <code>singing</code>, <code>silence</code> — enabling smart content-based editing.</p>
+<h2>When is detection used?</h2>
+<p>Detection is required for these presets:</p>
+<p>| Preset | What it removes |</p>
+<p>|--------|----------------|</p>
+<p>| <code>songs_only</code> | Keeps music + singing |</p>
+<p>| <code>speech_only</code> | Keeps speech |</p>
+<p>| <code>no_silence</code> | Removes silence only |</p>
+<h2>Available detectors</h2>
+<h2>Detector comparison</h2>
+<p>| Detector | Speed | Accuracy | Extra install? |</p>
+<p>|----------|-------|----------|---------------|</p>
+<p>| <code>ensemble</code> | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | No |</p>
+<p>| <code>ina</code> | ⭐⭐ | ⭐⭐⭐⭐ | <code>[detect]</code> |</p>
+<p>| <code>librosa</code> | ⭐⭐⭐ | ⭐⭐⭐ | No |</p>
+<p>| <code>ffmpeg</code> | ⭐⭐⭐⭐⭐ | ⭐⭐ | No |</p>
+<h2>Content block types</h2>
+<p>| Type | Description |</p>
+<p>|------|-------------|</p>
+<p>| <code>speech</code> | Clear speech, no music |</p>
+<p>| <code>music</code> | Music without vocals |</p>
+<p>| <code>singing</code> | Vocal melody / song |</p>
+<p>| <code>speech_over_music</code> | Talking over music bed |</p>
+<p>| <code>talking_over_music</code> | Speech detected on music (with demix) |</p>
+<p>| <code>silence</code> | No significant audio |</p>
+<h2>Usage</h2>
+<h2>Python API</h2></noscript></div><script type="application/json" id="aiui-initial-doc">{"url": "/docs/detection.source.md", "text": "# Content Detection Overview\n\nContent detection classifies each second of your media into types like `speech`, `music`, `singing`, `silence` — enabling smart content-based editing.\n\n## When is detection used?\n\nDetection is required for these presets:\n\n| Preset | What it removes |\n|--------|----------------|\n| `songs_only` | Keeps music + singing |\n| `speech_only` | Keeps speech |\n| `no_silence` | Removes silence only |\n\n## Available detectors\n\n```mermaid\nflowchart TD\n    A[--detector] --\u003e B{Which?}\n    B --\u003e|auto / ensemble| C[🏆 Ensemble\\nbest accuracy]\n    B --\u003e|ina| D[INA CNN\\ngood for speech/music]\n    B --\u003e|librosa| E[Librosa spectral\\nfeature-based]\n    B --\u003e|ffmpeg| F[FFmpeg astats\\nfast heuristic]\n    C --\u003e G[Combine all available\\ndetectors + vote]\n```\n\n## Detector comparison\n\n| Detector | Speed | Accuracy | Extra install? |\n|----------|-------|----------|---------------|\n| `ensemble` | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | No |\n| `ina` | ⭐⭐ | ⭐⭐⭐⭐ | `[detect]` |\n| `librosa` | ⭐⭐⭐ | ⭐⭐⭐ | No |\n| `ffmpeg` | ⭐⭐⭐⭐⭐ | ⭐⭐ | No |\n\n## Content block types\n\n| Type | Description |\n|------|-------------|\n| `speech` | Clear speech, no music |\n| `music` | Music without vocals |\n| `singing` | Vocal melody / song |\n| `speech_over_music` | Talking over music bed |\n| `talking_over_music` | Speech detected on music (with demix) |\n| `silence` | No significant audio |\n\n## Usage\n\n```bash\npraisonai-editor edit file.mp3 --preset songs_only --detector ensemble\n```\n\n## Python API\n\n```python\nfrom praisonai_editor.detect import create_content_plan\n\nplan, blocks, all_events = create_content_plan(\n    \"file.mp3\", transcript, duration,\n    keep_types=[\"music\", \"singing\"],\n    detector=\"ensemble\",\n    verbose=True,\n)\n```\n"}</script>
+  <script src="/plugins/plugin-loader.js?v=ac72173efc"></script>
+</body>
+
+</html>

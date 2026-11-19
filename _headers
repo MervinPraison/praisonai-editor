@@ -1,0 +1,2 @@
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'

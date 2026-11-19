@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <script id="aiui-canonical-url">(function(){var p=location.pathname.replace(/\/+$/, '')||'/';if(p!==location.pathname){history.replaceState(null,'',p+location.search+location.hash);}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Convert between audio and video formats using FFmpeg." />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>`convert` — Convert between formats | 🎙️ PraisonAI Editor</title>
+  <script>
+    (function(){try{var t=localStorage.getItem('aiui-theme-preference');var d=true;if(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)||(!t&&d))document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.remove('dark');}catch(e){}})();
+  </script>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script type="module" crossorigin src="/assets/index.js?v=5f6fb581b6"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-PPVm8Dsz.js">
+  <link rel="stylesheet" crossorigin href="/assets/index.css?v=241293edc9">
+  <link rel="canonical" href="https://editor.praison.ai/docs/commands/convert" />
+  <meta property="og:title" content="`convert` — Convert between formats | 🎙️ PraisonAI Editor" />
+  <meta property="og:description" content="Convert between audio and video formats using FFmpeg." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="🎙️ PraisonAI Editor" />
+  <meta name="twitter:title" content="`convert` — Convert between formats | 🎙️ PraisonAI Editor" />
+  <meta name="twitter:description" content="Convert between audio and video formats using FFmpeg." />
+  <meta property="og:url" content="https://editor.praison.ai/docs/commands/convert" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="alternate" type="text/markdown" href="https://editor.praison.ai/docs/commands/convert.md" />
+  <script type="application/ld+json" id="aiui-jsonld" data-page="https://editor.praison.ai/docs/commands/convert">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://editor.praison.ai/#organization", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/"}, {"@type": "WebSite", "@id": "https://editor.praison.ai/#website", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/", "publisher": {"@id": "https://editor.praison.ai/#organization"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://editor.praison.ai/?q={search_term_string}"}, "query-input": "required name=search_term_string"}}, {"@type": "TechArticle", "@id": "https://editor.praison.ai/docs/commands/convert#article", "headline": "`convert` — Convert between formats", "description": "Convert between audio and video formats using FFmpeg.", "url": "https://editor.praison.ai/docs/commands/convert", "mainEntityOfPage": "https://editor.praison.ai/docs/commands/convert", "isPartOf": {"@id": "https://editor.praison.ai/#website"}, "publisher": {"@id": "https://editor.praison.ai/#organization"}}]}</script>
+</head>
+
+<body>
+  <div id="root"><noscript><nav aria-label="Documentation"><ul><li><a href="https://editor.praison.ai/">PraisonAI Editor</a></li><li><a href="https://editor.praison.ai/docs/install">Installation</a></li><li><a href="https://editor.praison.ai/docs/quickstart">Quick Start</a></li><li><a href="https://editor.praison.ai/docs/agent/prompt-edit">AI Agent Prompt-Based Editing</a></li><li><a href="https://editor.praison.ai/docs/agent/tools">Agent Tools</a></li><li><a href="https://editor.praison.ai/docs/api">Python API Overview</a></li><li><a href="https://editor.praison.ai/docs/api/edit_media">`edit_media()` — Main API</a></li><li><a href="https://editor.praison.ai/docs/api/models">Data Models</a></li><li><a href="https://editor.praison.ai/docs/api/plans">Edit Plans API</a></li><li><a href="https://editor.praison.ai/docs/api/transcription">Transcription API</a></li><li><a href="https://editor.praison.ai/docs/artifacts">Artifacts &amp; Caching</a></li><li><a href="https://editor.praison.ai/docs/commands/convert">`convert` — Convert between formats</a></li><li><a href="https://editor.praison.ai/docs/commands/edit">`edit` — Full editing pipeline</a></li><li><a href="https://editor.praison.ai/docs/commands/plan">`plan` — Preview the edit plan</a></li><li><a href="https://editor.praison.ai/docs/commands/probe">`probe` — Inspect media metadata</a></li><li><a href="https://editor.praison.ai/docs/commands/transcribe">`transcribe` — Audio/video to text</a></li><li><a href="https://editor.praison.ai/docs/demix">🎵 Stem Separation (Demix)</a></li><li><a href="https://editor.praison.ai/docs/demix/cache">Stem Cache</a></li><li><a href="https://editor.praison.ai/docs/demix/primary-zone">Primary Zone Detection (`--primary-zone`)</a></li><li><a href="https://editor.praison.ai/docs/detection">Content Detection Overview</a></li><li><a href="https://editor.praison.ai/docs/detection/ensemble">Ensemble detector (`--detector ensemble`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ffmpeg">FFmpeg heuristic detector (`--detector ffmpeg`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ina">INA Speech Segmenter (`--detector ina`)</a></li><li><a href="https://editor.praison.ai/docs/detection/librosa">Librosa spectral detector (`--detector librosa`)</a></li><li><a href="https://editor.praison.ai/docs/presets">Presets Overview</a></li><li><a href="https://editor.praison.ai/docs/presets/clean">`clean` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/course">`course` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/meeting">`meeting` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/no_silence">`no_silence` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/podcast">`podcast` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/songs_only">`songs_only` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/speech_only">`speech_only` preset</a></li><li><a href="https://editor.praison.ai/docs/protocols">Extending with Protocols</a></li><li><a href="https://editor.praison.ai/docs/protocols/editor">Custom Editor</a></li><li><a href="https://editor.praison.ai/docs/protocols/renderer">Custom Renderer</a></li><li><a href="https://editor.praison.ai/docs/protocols/transcriber">Custom Transcriber</a></li></ul></nav><h1>`convert` — Convert between formats</h1>
+<p>Convert between audio and video formats using FFmpeg.</p>
+<h2>Usage</h2>
+<h2>Options</h2>
+<p>| Option | Short | Default | Description |</p>
+<p>|--------|-------|---------|-------------|</p>
+<p>| <code>INPUT</code> | | | Source media file |</p>
+<p>| <code>--output</code> | <code>-o</code> | <code>{stem}.{format}</code> | Output file path |</p>
+<p>| <code>--format</code> | <code>-f</code> | <code>mp3</code> | Target format: <code>mp3</code>, <code>wav</code>, <code>m4a</code> |</p>
+<p>| <code>--bitrate</code> | <code>-b</code> | <code>192k</code> | Audio bitrate |</p>
+<h2>Examples</h2>
+<p>=== "MP4 → MP3"</p>
+<p>=== "High quality"</p>
+<p>=== "WAV output"</p>
+<p>=== "Custom output path"</p>
+<h2>Bitrate guide</h2>
+<p>| Bitrate | Use case |</p>
+<p>|---------|----------|</p>
+<p>| <code>64k</code> | Voice / speech (small file) |</p>
+<p>| <code>128k</code> | Standard quality |</p>
+<p>| <code>192k</code> | Good quality *(default)* |</p>
+<p>| <code>320k</code> | High quality / music |</p>
+<p>!!! tip "Python API"</p></noscript></div><script type="application/json" id="aiui-initial-doc">{"url": "/docs/commands/convert.source.md", "text": "# `convert` — Convert between formats\n\nConvert between audio and video formats using FFmpeg.\n\n## Usage\n\n```bash\npraisonai-editor convert INPUT [OPTIONS]\n```\n\n## Options\n\n| Option | Short | Default | Description |\n|--------|-------|---------|-------------|\n| `INPUT` | | | Source media file |\n| `--output` | `-o` | `{stem}.{format}` | Output file path |\n| `--format` | `-f` | `mp3` | Target format: `mp3`, `wav`, `m4a` |\n| `--bitrate` | `-b` | `192k` | Audio bitrate |\n\n## Examples\n\n=== \"MP4 → MP3\"\n\n    ```bash\n    praisonai-editor convert video.mp4\n    # → video.mp3 (192k)\n    ```\n\n=== \"High quality\"\n\n    ```bash\n    praisonai-editor convert video.mp4 --bitrate 320k\n    ```\n\n=== \"WAV output\"\n\n    ```bash\n    praisonai-editor convert podcast.mp3 --format wav\n    ```\n\n=== \"Custom output path\"\n\n    ```bash\n    praisonai-editor convert video.mp4 --output ~/Desktop/audio.mp3\n    ```\n\n## Bitrate guide\n\n| Bitrate | Use case |\n|---------|----------|\n| `64k` | Voice / speech (small file) |\n| `128k` | Standard quality |\n| `192k` | Good quality *(default)* |\n| `320k` | High quality / music |\n\n!!! tip \"Python API\"\n    ```python\n    from praisonai_editor.convert import convert_media\n\n    output = convert_media(\"video.mp4\", \"audio.mp3\", bitrate=\"192k\")\n    print(output)  # \"audio.mp3\"\n    ```\n"}</script>
+  <script src="/plugins/plugin-loader.js?v=ac72173efc"></script>
+</body>
+
+</html>

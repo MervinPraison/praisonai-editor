@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Sitemap: https://editor.praison.ai/sitemap.xml
+# LLM index: https://editor.praison.ai/llms.txt

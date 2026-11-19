@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <script id="aiui-canonical-url">(function(){var p=location.pathname.replace(/\/+$/, '')||'/';if(p!==location.pathname){history.replaceState(null,'',p+location.search+location.hash);}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The main command. Runs transcription → content detection → plan → render in one shot." />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>`edit` — Full editing pipeline | 🎙️ PraisonAI Editor</title>
+  <script>
+    (function(){try{var t=localStorage.getItem('aiui-theme-preference');var d=true;if(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)||(!t&&d))document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.remove('dark');}catch(e){}})();
+  </script>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script type="module" crossorigin src="/assets/index.js?v=5f6fb581b6"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-PPVm8Dsz.js">
+  <link rel="stylesheet" crossorigin href="/assets/index.css?v=241293edc9">
+  <link rel="canonical" href="https://editor.praison.ai/docs/commands/edit" />
+  <meta property="og:title" content="`edit` — Full editing pipeline | 🎙️ PraisonAI Editor" />
+  <meta property="og:description" content="The main command. Runs transcription → content detection → plan → render in one shot." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="🎙️ PraisonAI Editor" />
+  <meta name="twitter:title" content="`edit` — Full editing pipeline | 🎙️ PraisonAI Editor" />
+  <meta name="twitter:description" content="The main command. Runs transcription → content detection → plan → render in one shot." />
+  <meta property="og:url" content="https://editor.praison.ai/docs/commands/edit" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="alternate" type="text/markdown" href="https://editor.praison.ai/docs/commands/edit.md" />
+  <script type="application/ld+json" id="aiui-jsonld" data-page="https://editor.praison.ai/docs/commands/edit">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://editor.praison.ai/#organization", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/"}, {"@type": "WebSite", "@id": "https://editor.praison.ai/#website", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/", "publisher": {"@id": "https://editor.praison.ai/#organization"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://editor.praison.ai/?q={search_term_string}"}, "query-input": "required name=search_term_string"}}, {"@type": "TechArticle", "@id": "https://editor.praison.ai/docs/commands/edit#article", "headline": "`edit` — Full editing pipeline", "description": "The main command. Runs transcription → content detection → plan → render in one shot.", "url": "https://editor.praison.ai/docs/commands/edit", "mainEntityOfPage": "https://editor.praison.ai/docs/commands/edit", "isPartOf": {"@id": "https://editor.praison.ai/#website"}, "publisher": {"@id": "https://editor.praison.ai/#organization"}}]}</script>
+</head>
+
+<body>
+  <div id="root"><noscript><nav aria-label="Documentation"><ul><li><a href="https://editor.praison.ai/">PraisonAI Editor</a></li><li><a href="https://editor.praison.ai/docs/install">Installation</a></li><li><a href="https://editor.praison.ai/docs/quickstart">Quick Start</a></li><li><a href="https://editor.praison.ai/docs/agent/prompt-edit">AI Agent Prompt-Based Editing</a></li><li><a href="https://editor.praison.ai/docs/agent/tools">Agent Tools</a></li><li><a href="https://editor.praison.ai/docs/api">Python API Overview</a></li><li><a href="https://editor.praison.ai/docs/api/edit_media">`edit_media()` — Main API</a></li><li><a href="https://editor.praison.ai/docs/api/models">Data Models</a></li><li><a href="https://editor.praison.ai/docs/api/plans">Edit Plans API</a></li><li><a href="https://editor.praison.ai/docs/api/transcription">Transcription API</a></li><li><a href="https://editor.praison.ai/docs/artifacts">Artifacts &amp; Caching</a></li><li><a href="https://editor.praison.ai/docs/commands/convert">`convert` — Convert between formats</a></li><li><a href="https://editor.praison.ai/docs/commands/edit">`edit` — Full editing pipeline</a></li><li><a href="https://editor.praison.ai/docs/commands/plan">`plan` — Preview the edit plan</a></li><li><a href="https://editor.praison.ai/docs/commands/probe">`probe` — Inspect media metadata</a></li><li><a href="https://editor.praison.ai/docs/commands/transcribe">`transcribe` — Audio/video to text</a></li><li><a href="https://editor.praison.ai/docs/demix">🎵 Stem Separation (Demix)</a></li><li><a href="https://editor.praison.ai/docs/demix/cache">Stem Cache</a></li><li><a href="https://editor.praison.ai/docs/demix/primary-zone">Primary Zone Detection (`--primary-zone`)</a></li><li><a href="https://editor.praison.ai/docs/detection">Content Detection Overview</a></li><li><a href="https://editor.praison.ai/docs/detection/ensemble">Ensemble detector (`--detector ensemble`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ffmpeg">FFmpeg heuristic detector (`--detector ffmpeg`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ina">INA Speech Segmenter (`--detector ina`)</a></li><li><a href="https://editor.praison.ai/docs/detection/librosa">Librosa spectral detector (`--detector librosa`)</a></li><li><a href="https://editor.praison.ai/docs/presets">Presets Overview</a></li><li><a href="https://editor.praison.ai/docs/presets/clean">`clean` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/course">`course` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/meeting">`meeting` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/no_silence">`no_silence` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/podcast">`podcast` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/songs_only">`songs_only` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/speech_only">`speech_only` preset</a></li><li><a href="https://editor.praison.ai/docs/protocols">Extending with Protocols</a></li><li><a href="https://editor.praison.ai/docs/protocols/editor">Custom Editor</a></li><li><a href="https://editor.praison.ai/docs/protocols/renderer">Custom Renderer</a></li><li><a href="https://editor.praison.ai/docs/protocols/transcriber">Custom Transcriber</a></li></ul></nav><h1>`edit` — Full editing pipeline</h1>
+<p>The main command. Runs transcription → content detection → plan → render in one shot.</p>
+<h2>Usage</h2>
+<h2>All Options</h2>
+<p>| Option | Short | Default | Description |</p>
+<p>|--------|-------|---------|-------------|</p>
+<p>| <code>INPUT</code> | | | Input media file (audio or video) |</p>
+<p>| <code>--output</code> | <code>-o</code> | <code>{stem}_edited.{ext}</code> | Output file path |</p>
+<p>| <code>--preset</code> | <code>-p</code> | <code>podcast</code> | Edit preset (see Presets) |</p>
+<p>| <code>--prompt</code> | | | Natural language instruction (AI agent) |</p>
+<p>| <code>--detector</code> | | <code>auto</code> | Content detector: <code>auto</code> · <code>ensemble</code> · <code>ina</code> · <code>librosa</code> · <code>ffmpeg</code> |</p>
+<p>| <code>--demix</code> | | off | Enable Demucs vocal stem separation |</p>
+<p>| <code>--primary-zone</code> | | off | Crop to primary singing zone only |</p>
+<p>| <code>--no-fillers</code> | | off | Keep filler words (don't remove) |</p>
+<p>| <code>--no-repetitions</code> | | off | Keep repetitions |</p>
+<p>| <code>--no-silence</code> | | off | Keep silences |</p>
+<p>| <code>--local</code> | | off | Use offline faster-whisper |</p>
+<p>| <code>--language</code> | | auto | Language code (<code>en</code>, <code>ta</code>, <code>es</code>, …) |</p>
+<p>| <code>--reencode</code> | | off | Re-encode instead of stream copy (slower, better quality) |</p>
+<p>| <code>--no-artifacts</code> | | off | Don't save artifacts to <code>~/.praisonai/editor/</code> |</p>
+<p>| <code>--verbose</code> | <code>-v</code> | off | Print step-by-step progress |</p>
+<h2>Examples</h2>
+<p>=== "Podcast (default)"</p>
+<p>Removes: fillers · repetitions · silences &gt; 1.5s</p>
+<p>=== "Keep only songs"</p>
+<p>=== "Speech only (remove music)"</p>
+<p>=== "Video meeting cleanup"</p>
+<p>=== "AI agent edit"</p>
+<p>=== "Tamil language"</p>
+<p>=== "Offline"</p>
+<p>---</p>
+<h2>Artifacts saved</h2>
+<p>Use <code>--no-artifacts</code> to skip saving.</p>
+<p>---</p>
+<h2>Python API</h2></noscript></div><script type="application/json" id="aiui-initial-doc">{"url": "/docs/commands/edit.source.md", "text": "# `edit` — Full editing pipeline\n\nThe main command. Runs transcription → content detection → plan → render in one shot.\n\n## Usage\n\n```bash\npraisonai-editor edit INPUT [OPTIONS]\n```\n\n## All Options\n\n| Option | Short | Default | Description |\n|--------|-------|---------|-------------|\n| `INPUT` | | | Input media file (audio or video) |\n| `--output` | `-o` | `{stem}_edited.{ext}` | Output file path |\n| `--preset` | `-p` | `podcast` | Edit preset (see [Presets](../presets/index.md)) |\n| `--prompt` | | | Natural language instruction (AI agent) |\n| `--detector` | | `auto` | Content detector: `auto` · `ensemble` · `ina` · `librosa` · `ffmpeg` |\n| `--demix` | | off | Enable Demucs vocal stem separation |\n| `--primary-zone` | | off | Crop to primary singing zone only |\n| `--no-fillers` | | off | Keep filler words (don't remove) |\n| `--no-repetitions` | | off | Keep repetitions |\n| `--no-silence` | | off | Keep silences |\n| `--local` | | off | Use offline faster-whisper |\n| `--language` | | auto | Language code (`en`, `ta`, `es`, …) |\n| `--reencode` | | off | Re-encode instead of stream copy (slower, better quality) |\n| `--no-artifacts` | | off | Don't save artifacts to `~/.praisonai/editor/` |\n| `--verbose` | `-v` | off | Print step-by-step progress |\n\n---\n\n## Pipeline overview\n\n```mermaid\nflowchart LR\n    Input --\u003e Probe\n    Probe --\u003e Cache{Transcript\\ncached?}\n    Cache --\u003e|Yes| Plan\n    Cache --\u003e|No| Whisper --\u003e Plan\n    Plan --\u003e Detect{Content\\npreset?}\n    Detect --\u003e|songs_only\\nspeech_only\\nno_silence| ContentDetect\n    Detect --\u003e|podcast\\nmeeting\\ncourse\\nclean| Heuristic\n    ContentDetect --\u003e|--demix| Demucs\n    ContentDetect --\u003e Render\n    Demucs --\u003e Render\n    Heuristic --\u003e Render\n    Render --\u003e Output\n```\n\n---\n\n## Examples\n\n=== \"Podcast (default)\"\n\n    ```bash\n    praisonai-editor edit podcast.mp3 -v\n    ```\n    Removes: fillers · repetitions · silences \u003e 1.5s\n\n=== \"Keep only songs\"\n\n    ```bash\n    praisonai-editor edit concert.mp3 \\\n      --preset songs_only \\\n      --detector ensemble \\\n      --demix \\\n      --primary-zone \\\n      -v\n    ```\n\n=== \"Speech only (remove music)\"\n\n    ```bash\n    praisonai-editor edit radio.mp3 --preset speech_only --detector ensemble\n    ```\n\n=== \"Video meeting cleanup\"\n\n    ```bash\n    praisonai-editor edit meeting.mp4 --preset meeting -v\n    ```\n\n=== \"AI agent edit\"\n\n    ```bash\n    praisonai-editor edit interview.mp3 \\\n      --prompt \"Remove the intro and any off-topic discussion\"\n    ```\n\n=== \"Tamil language\"\n\n    ```bash\n    praisonai-editor edit audio.mp3 --language ta -v\n    ```\n\n=== \"Offline\"\n\n    ```bash\n    pip install \"praisonai-editor[local]\"\n    praisonai-editor edit audio.mp3 --local -v\n    ```\n\n---\n\n## Artifacts saved\n\n```\n~/.praisonai/editor/{filename}/\n  ├── probe.json\n  ├── transcript.json   ← cached — reused on second run\n  ├── transcript.srt\n  ├── transcript.txt\n  ├── plan.json\n  └── content_blocks.json  ← only with --detector\n```\n\nUse `--no-artifacts` to skip saving.\n\n---\n\n## Python API\n\n```python\nfrom praisonai_editor.pipeline import edit_media\n\nresult = edit_media(\n    \"podcast.mp3\",\n    output_path=\"podcast_clean.mp3\",\n    preset=\"podcast\",\n    verbose=True,\n)\n\nprint(result.success)          # True\nprint(result.output_path)      # \"podcast_clean.mp3\"\nprint(result.plan.removed_duration)  # seconds removed\n```\n"}</script>
+  <script src="/plugins/plugin-loader.js?v=ac72173efc"></script>
+</body>
+
+</html>

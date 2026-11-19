@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <script id="aiui-canonical-url">(function(){var p=location.pathname.replace(/\/+$/, '')||'/';if(p!==location.pathname){history.replaceState(null,'',p+location.search+location.hash);}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="=== &quot;Ubuntu / Debian&quot;" />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>Installation | 🎙️ PraisonAI Editor</title>
+  <script>
+    (function(){try{var t=localStorage.getItem('aiui-theme-preference');var d=true;if(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)||(!t&&d))document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.remove('dark');}catch(e){}})();
+  </script>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script type="module" crossorigin src="/assets/index.js?v=5f6fb581b6"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-PPVm8Dsz.js">
+  <link rel="stylesheet" crossorigin href="/assets/index.css?v=241293edc9">
+  <link rel="canonical" href="https://editor.praison.ai/docs/install" />
+  <meta property="og:title" content="Installation | 🎙️ PraisonAI Editor" />
+  <meta property="og:description" content="=== &quot;Ubuntu / Debian&quot;" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="🎙️ PraisonAI Editor" />
+  <meta name="twitter:title" content="Installation | 🎙️ PraisonAI Editor" />
+  <meta name="twitter:description" content="=== &quot;Ubuntu / Debian&quot;" />
+  <meta property="og:url" content="https://editor.praison.ai/docs/install" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="alternate" type="text/markdown" href="https://editor.praison.ai/docs/install.md" />
+  <script type="application/ld+json" id="aiui-jsonld" data-page="https://editor.praison.ai/docs/install">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://editor.praison.ai/#organization", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/"}, {"@type": "WebSite", "@id": "https://editor.praison.ai/#website", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/", "publisher": {"@id": "https://editor.praison.ai/#organization"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://editor.praison.ai/?q={search_term_string}"}, "query-input": "required name=search_term_string"}}, {"@type": "TechArticle", "@id": "https://editor.praison.ai/docs/install#article", "headline": "Installation", "description": "=== \"Ubuntu / Debian\"", "url": "https://editor.praison.ai/docs/install", "mainEntityOfPage": "https://editor.praison.ai/docs/install", "isPartOf": {"@id": "https://editor.praison.ai/#website"}, "publisher": {"@id": "https://editor.praison.ai/#organization"}}]}</script>
+</head>
+
+<body>
+  <div id="root"><noscript><nav aria-label="Documentation"><ul><li><a href="https://editor.praison.ai/">PraisonAI Editor</a></li><li><a href="https://editor.praison.ai/docs/install">Installation</a></li><li><a href="https://editor.praison.ai/docs/quickstart">Quick Start</a></li><li><a href="https://editor.praison.ai/docs/agent/prompt-edit">AI Agent Prompt-Based Editing</a></li><li><a href="https://editor.praison.ai/docs/agent/tools">Agent Tools</a></li><li><a href="https://editor.praison.ai/docs/api">Python API Overview</a></li><li><a href="https://editor.praison.ai/docs/api/edit_media">`edit_media()` — Main API</a></li><li><a href="https://editor.praison.ai/docs/api/models">Data Models</a></li><li><a href="https://editor.praison.ai/docs/api/plans">Edit Plans API</a></li><li><a href="https://editor.praison.ai/docs/api/transcription">Transcription API</a></li><li><a href="https://editor.praison.ai/docs/artifacts">Artifacts &amp; Caching</a></li><li><a href="https://editor.praison.ai/docs/commands/convert">`convert` — Convert between formats</a></li><li><a href="https://editor.praison.ai/docs/commands/edit">`edit` — Full editing pipeline</a></li><li><a href="https://editor.praison.ai/docs/commands/plan">`plan` — Preview the edit plan</a></li><li><a href="https://editor.praison.ai/docs/commands/probe">`probe` — Inspect media metadata</a></li><li><a href="https://editor.praison.ai/docs/commands/transcribe">`transcribe` — Audio/video to text</a></li><li><a href="https://editor.praison.ai/docs/demix">🎵 Stem Separation (Demix)</a></li><li><a href="https://editor.praison.ai/docs/demix/cache">Stem Cache</a></li><li><a href="https://editor.praison.ai/docs/demix/primary-zone">Primary Zone Detection (`--primary-zone`)</a></li><li><a href="https://editor.praison.ai/docs/detection">Content Detection Overview</a></li><li><a href="https://editor.praison.ai/docs/detection/ensemble">Ensemble detector (`--detector ensemble`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ffmpeg">FFmpeg heuristic detector (`--detector ffmpeg`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ina">INA Speech Segmenter (`--detector ina`)</a></li><li><a href="https://editor.praison.ai/docs/detection/librosa">Librosa spectral detector (`--detector librosa`)</a></li><li><a href="https://editor.praison.ai/docs/presets">Presets Overview</a></li><li><a href="https://editor.praison.ai/docs/presets/clean">`clean` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/course">`course` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/meeting">`meeting` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/no_silence">`no_silence` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/podcast">`podcast` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/songs_only">`songs_only` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/speech_only">`speech_only` preset</a></li><li><a href="https://editor.praison.ai/docs/protocols">Extending with Protocols</a></li><li><a href="https://editor.praison.ai/docs/protocols/editor">Custom Editor</a></li><li><a href="https://editor.praison.ai/docs/protocols/renderer">Custom Renderer</a></li><li><a href="https://editor.praison.ai/docs/protocols/transcriber">Custom Transcriber</a></li></ul></nav><h1>Installation</h1>
+<h2>Requirements</h2>
+<li>Python <strong>3.10+</strong></li>
+<li><strong>FFmpeg</strong> installed on your system</li>
+<li><strong>OpenAI API key</strong> (for cloud transcription, or use <code>--local</code>)</li>
+<h2>Install praisonai-editor</h2>
+<h3>Minimal (OpenAI Whisper)</h3>
+<h3>With local Whisper (offline)</h3>
+<h3>With Demucs stem separation</h3>
+<h3>With INA speech detector</h3>
+<h3>Everything</h3>
+<p>---</p>
+<h2>Extras at a glance</h2>
+<p>| Extra | What it adds | When to use |</p>
+<p>|-------|-------------|-------------|</p>
+<p>| *(default)* | OpenAI Whisper cloud | Always use first |</p>
+<p>| <code>[local]</code> | faster-whisper (offline) | No internet / privacy |</p>
+<p>| <code>[demix]</code> | Demucs stem separation | Music files, <code>--demix</code> |</p>
+<p>| <code>[detect]</code> | inaSpeechSegmenter | <code>--detector ina</code> |</p>
+<p>| <code>[all]</code> | All of the above | Power users |</p>
+<p>---</p>
+<h2>Set your API key</h2>
+<p>Or create a <code>.env</code> file:</p>
+<p>!!! tip "No API key needed"</p>
+<p>Use <code>--local</code> flag to transcribe completely offline with faster-whisper:</p>
+<p>---</p>
+<h2>Verify installation</h2></noscript></div><script type="application/json" id="aiui-initial-doc">{"url": "/docs/install.source.md", "text": "# Installation\n\n## Requirements\n\n- Python **3.10+**\n- **FFmpeg** installed on your system\n- **OpenAI API key** (for cloud transcription, or use `--local`)\n\n---\n\n## Install FFmpeg\n\n=== \"macOS\"\n    ```bash\n    brew install ffmpeg\n    ```\n\n=== \"Ubuntu / Debian\"\n    ```bash\n    sudo apt install ffmpeg\n    ```\n\n=== \"Windows\"\n    Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH.\n\n---\n\n## Install praisonai-editor\n\n### Minimal (OpenAI Whisper)\n```bash\npip install praisonai-editor\n```\n\n### With local Whisper (offline)\n```bash\npip install \"praisonai-editor[local]\"\n```\n\n### With Demucs stem separation\n```bash\npip install \"praisonai-editor[demix]\"\n```\n\n### With INA speech detector\n```bash\npip install \"praisonai-editor[detect]\"\n```\n\n### Everything\n```bash\npip install \"praisonai-editor[all]\"\n```\n\n---\n\n## Extras at a glance\n\n| Extra | What it adds | When to use |\n|-------|-------------|-------------|\n| *(default)* | OpenAI Whisper cloud | Always use first |\n| `[local]` | faster-whisper (offline) | No internet / privacy |\n| `[demix]` | Demucs stem separation | Music files, `--demix` |\n| `[detect]` | inaSpeechSegmenter | `--detector ina` |\n| `[all]` | All of the above | Power users |\n\n---\n\n## Set your API key\n\n```bash\nexport OPENAI_API_KEY=sk-...\n```\n\nOr create a `.env` file:\n```\nOPENAI_API_KEY=sk-...\n```\n\n!!! tip \"No API key needed\"\n    Use `--local` flag to transcribe completely offline with faster-whisper:\n    ```bash\n    praisonai-editor edit file.mp3 --local\n    ```\n\n---\n\n## Verify installation\n\n```bash\npraisonai-editor --help\npraisonai-editor probe myfile.mp3\n```\n"}</script>
+  <script src="/plugins/plugin-loader.js?v=ac72173efc"></script>
+</body>
+
+</html>

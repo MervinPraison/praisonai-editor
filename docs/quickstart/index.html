@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <script id="aiui-canonical-url">(function(){var p=location.pathname.replace(/\/+$/, '')||'/';if(p!==location.pathname){history.replaceState(null,'',p+location.search+location.hash);}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Get from zero to an edited file in under 2 minutes." />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>Quick Start | 🎙️ PraisonAI Editor</title>
+  <script>
+    (function(){try{var t=localStorage.getItem('aiui-theme-preference');var d=true;if(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)||(!t&&d))document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.remove('dark');}catch(e){}})();
+  </script>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script type="module" crossorigin src="/assets/index.js?v=5f6fb581b6"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-PPVm8Dsz.js">
+  <link rel="stylesheet" crossorigin href="/assets/index.css?v=241293edc9">
+  <link rel="canonical" href="https://editor.praison.ai/docs/quickstart" />
+  <meta property="og:title" content="Quick Start | 🎙️ PraisonAI Editor" />
+  <meta property="og:description" content="Get from zero to an edited file in under 2 minutes." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="🎙️ PraisonAI Editor" />
+  <meta name="twitter:title" content="Quick Start | 🎙️ PraisonAI Editor" />
+  <meta name="twitter:description" content="Get from zero to an edited file in under 2 minutes." />
+  <meta property="og:url" content="https://editor.praison.ai/docs/quickstart" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="alternate" type="text/markdown" href="https://editor.praison.ai/docs/quickstart.md" />
+  <script type="application/ld+json" id="aiui-jsonld" data-page="https://editor.praison.ai/docs/quickstart">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://editor.praison.ai/#organization", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/"}, {"@type": "WebSite", "@id": "https://editor.praison.ai/#website", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/", "publisher": {"@id": "https://editor.praison.ai/#organization"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://editor.praison.ai/?q={search_term_string}"}, "query-input": "required name=search_term_string"}}, {"@type": "TechArticle", "@id": "https://editor.praison.ai/docs/quickstart#article", "headline": "Quick Start", "description": "Get from zero to an edited file in under 2 minutes.", "url": "https://editor.praison.ai/docs/quickstart", "mainEntityOfPage": "https://editor.praison.ai/docs/quickstart", "isPartOf": {"@id": "https://editor.praison.ai/#website"}, "publisher": {"@id": "https://editor.praison.ai/#organization"}}]}</script>
+</head>
+
+<body>
+  <div id="root"><noscript><nav aria-label="Documentation"><ul><li><a href="https://editor.praison.ai/">PraisonAI Editor</a></li><li><a href="https://editor.praison.ai/docs/install">Installation</a></li><li><a href="https://editor.praison.ai/docs/quickstart">Quick Start</a></li><li><a href="https://editor.praison.ai/docs/agent/prompt-edit">AI Agent Prompt-Based Editing</a></li><li><a href="https://editor.praison.ai/docs/agent/tools">Agent Tools</a></li><li><a href="https://editor.praison.ai/docs/api">Python API Overview</a></li><li><a href="https://editor.praison.ai/docs/api/edit_media">`edit_media()` — Main API</a></li><li><a href="https://editor.praison.ai/docs/api/models">Data Models</a></li><li><a href="https://editor.praison.ai/docs/api/plans">Edit Plans API</a></li><li><a href="https://editor.praison.ai/docs/api/transcription">Transcription API</a></li><li><a href="https://editor.praison.ai/docs/artifacts">Artifacts &amp; Caching</a></li><li><a href="https://editor.praison.ai/docs/commands/convert">`convert` — Convert between formats</a></li><li><a href="https://editor.praison.ai/docs/commands/edit">`edit` — Full editing pipeline</a></li><li><a href="https://editor.praison.ai/docs/commands/plan">`plan` — Preview the edit plan</a></li><li><a href="https://editor.praison.ai/docs/commands/probe">`probe` — Inspect media metadata</a></li><li><a href="https://editor.praison.ai/docs/commands/transcribe">`transcribe` — Audio/video to text</a></li><li><a href="https://editor.praison.ai/docs/demix">🎵 Stem Separation (Demix)</a></li><li><a href="https://editor.praison.ai/docs/demix/cache">Stem Cache</a></li><li><a href="https://editor.praison.ai/docs/demix/primary-zone">Primary Zone Detection (`--primary-zone`)</a></li><li><a href="https://editor.praison.ai/docs/detection">Content Detection Overview</a></li><li><a href="https://editor.praison.ai/docs/detection/ensemble">Ensemble detector (`--detector ensemble`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ffmpeg">FFmpeg heuristic detector (`--detector ffmpeg`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ina">INA Speech Segmenter (`--detector ina`)</a></li><li><a href="https://editor.praison.ai/docs/detection/librosa">Librosa spectral detector (`--detector librosa`)</a></li><li><a href="https://editor.praison.ai/docs/presets">Presets Overview</a></li><li><a href="https://editor.praison.ai/docs/presets/clean">`clean` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/course">`course` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/meeting">`meeting` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/no_silence">`no_silence` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/podcast">`podcast` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/songs_only">`songs_only` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/speech_only">`speech_only` preset</a></li><li><a href="https://editor.praison.ai/docs/protocols">Extending with Protocols</a></li><li><a href="https://editor.praison.ai/docs/protocols/editor">Custom Editor</a></li><li><a href="https://editor.praison.ai/docs/protocols/renderer">Custom Renderer</a></li><li><a href="https://editor.praison.ai/docs/protocols/transcriber">Custom Transcriber</a></li></ul></nav><h1>Quick Start</h1>
+<p>Get from zero to an edited file in under 2 minutes.</p>
+<h2>1. Install</h2>
+<p>!!! tip "Offline / local Whisper"</p>
+<h2>3. Common recipes</h2>
+<p>=== "Podcast cleanup"</p>
+<p>=== "Keep only singing"</p>
+<p>=== "Meeting — remove silences only"</p>
+<p>=== "AI natural language edit"</p>
+<p>=== "Transcribe to SRT"</p>
+<p>=== "Convert MP4 → MP3"</p>
+<p>---</p>
+<h2>4. Output files</h2>
+<p>After <code>edit</code>, you get:</p>
+<p>!!! info "Transcript cache"</p>
+<p>Second run reuses <code>transcript.json</code> — no API call needed.</p></noscript></div><script type="application/json" id="aiui-initial-doc">{"url": "/docs/quickstart.source.md", "text": "# Quick Start\n\nGet from zero to an edited file in under 2 minutes.\n\n## 1. Install\n\n```bash\npip install praisonai-editor\n```\n\n```bash\nexport OPENAI_API_KEY=sk-...\n```\n\n!!! tip \"Offline / local Whisper\"\n    ```bash\n    pip install \"praisonai-editor[local]\"\n    praisonai-editor edit podcast.mp3 --local\n    ```\n\n---\n\n## 2. Edit a podcast\n\n```bash\npraisonai-editor edit podcast.mp3 -v\n```\n\nWhat this does:\n\n```mermaid\nsequenceDiagram\n    participant You\n    participant CLI\n    participant Whisper\n    participant FFmpeg\n\n    You-\u003e\u003eCLI: edit podcast.mp3\n    CLI-\u003e\u003eWhisper: transcribe (word-level)\n    Whisper--\u003e\u003eCLI: words + timestamps\n    CLI-\u003e\u003eCLI: detect fillers · repetitions · silences\n    CLI-\u003e\u003eFFmpeg: render keep-only segments\n    FFmpeg--\u003e\u003eYou: podcast_edited.mp3 ✓\n```\n\n---\n\n## 3. Common recipes\n\n=== \"Podcast cleanup\"\n\n    ```bash\n    praisonai-editor edit episode.mp3 --preset podcast -v\n    ```\n\n=== \"Keep only singing\"\n\n    ```bash\n    praisonai-editor edit concert.mp3 \\\n      --preset songs_only \\\n      --detector ensemble \\\n      --demix \\\n      --primary-zone \\\n      -v\n    ```\n\n=== \"Meeting — remove silences only\"\n\n    ```bash\n    praisonai-editor edit standup.mp4 --preset meeting -v\n    ```\n\n=== \"AI natural language edit\"\n\n    ```bash\n    praisonai-editor edit interview.mp3 \\\n      --prompt \"Remove the intro, the weather tangent, and keep only the technical discussion\"\n    ```\n\n=== \"Transcribe to SRT\"\n\n    ```bash\n    praisonai-editor transcribe video.mp4 --format srt --output subs.srt\n    ```\n\n=== \"Convert MP4 → MP3\"\n\n    ```bash\n    praisonai-editor convert video.mp4 --format mp3\n    ```\n\n---\n\n## 4. Output files\n\nAfter `edit`, you get:\n\n```\npodcast_edited.mp3        ← edited audio\n~/.praisonai/editor/podcast/\n  ├── probe.json          ← media metadata\n  ├── transcript.json     ← word timestamps (cached)\n  ├── transcript.srt      ← subtitles\n  ├── transcript.txt      ← plain text\n  ├── plan.json           ← edit decisions\n  └── content_blocks.json ← detection blocks (if --detector)\n```\n\n!!! info \"Transcript cache\"\n    Second run reuses `transcript.json` — no API call needed.\n"}</script>
+  <script src="/plugins/plugin-loader.js?v=ac72173efc"></script>
+</body>
+
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DKeuG1WwxgOpbA91FyYv5sx9XItuR137MlEMGrfrsRA=' 'sha256-EkXfQjR04IRFf+b4AvtG9BbuEA3emOdcqsfjywgEAPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <script id="aiui-canonical-url">(function(){var p=location.pathname.replace(/\/+$/, '')||'/';if(p!==location.pathname){history.replaceState(null,'',p+location.search+location.hash);}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Transcribe any audio or video file with word-level timestamps." />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:locale" content="en_US" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <title>`transcribe` — Audio/video to text | 🎙️ PraisonAI Editor</title>
+  <script>
+    (function(){try{var t=localStorage.getItem('aiui-theme-preference');var d=true;if(t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)||(!t&&d))document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.remove('dark');}catch(e){}})();
+  </script>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script type="module" crossorigin src="/assets/index.js?v=5f6fb581b6"></script>
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-PPVm8Dsz.js">
+  <link rel="stylesheet" crossorigin href="/assets/index.css?v=241293edc9">
+  <link rel="canonical" href="https://editor.praison.ai/docs/commands/transcribe" />
+  <meta property="og:title" content="`transcribe` — Audio/video to text | 🎙️ PraisonAI Editor" />
+  <meta property="og:description" content="Transcribe any audio or video file with word-level timestamps." />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="🎙️ PraisonAI Editor" />
+  <meta name="twitter:title" content="`transcribe` — Audio/video to text | 🎙️ PraisonAI Editor" />
+  <meta name="twitter:description" content="Transcribe any audio or video file with word-level timestamps." />
+  <meta property="og:url" content="https://editor.praison.ai/docs/commands/transcribe" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="alternate" type="text/markdown" href="https://editor.praison.ai/docs/commands/transcribe.md" />
+  <script type="application/ld+json" id="aiui-jsonld" data-page="https://editor.praison.ai/docs/commands/transcribe">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://editor.praison.ai/#organization", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/"}, {"@type": "WebSite", "@id": "https://editor.praison.ai/#website", "name": "🎙️ PraisonAI Editor", "url": "https://editor.praison.ai/", "publisher": {"@id": "https://editor.praison.ai/#organization"}, "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://editor.praison.ai/?q={search_term_string}"}, "query-input": "required name=search_term_string"}}, {"@type": "TechArticle", "@id": "https://editor.praison.ai/docs/commands/transcribe#article", "headline": "`transcribe` — Audio/video to text", "description": "Transcribe any audio or video file with word-level timestamps.", "url": "https://editor.praison.ai/docs/commands/transcribe", "mainEntityOfPage": "https://editor.praison.ai/docs/commands/transcribe", "isPartOf": {"@id": "https://editor.praison.ai/#website"}, "publisher": {"@id": "https://editor.praison.ai/#organization"}}]}</script>
+</head>
+
+<body>
+  <div id="root"><noscript><nav aria-label="Documentation"><ul><li><a href="https://editor.praison.ai/">PraisonAI Editor</a></li><li><a href="https://editor.praison.ai/docs/install">Installation</a></li><li><a href="https://editor.praison.ai/docs/quickstart">Quick Start</a></li><li><a href="https://editor.praison.ai/docs/agent/prompt-edit">AI Agent Prompt-Based Editing</a></li><li><a href="https://editor.praison.ai/docs/agent/tools">Agent Tools</a></li><li><a href="https://editor.praison.ai/docs/api">Python API Overview</a></li><li><a href="https://editor.praison.ai/docs/api/edit_media">`edit_media()` — Main API</a></li><li><a href="https://editor.praison.ai/docs/api/models">Data Models</a></li><li><a href="https://editor.praison.ai/docs/api/plans">Edit Plans API</a></li><li><a href="https://editor.praison.ai/docs/api/transcription">Transcription API</a></li><li><a href="https://editor.praison.ai/docs/artifacts">Artifacts &amp; Caching</a></li><li><a href="https://editor.praison.ai/docs/commands/convert">`convert` — Convert between formats</a></li><li><a href="https://editor.praison.ai/docs/commands/edit">`edit` — Full editing pipeline</a></li><li><a href="https://editor.praison.ai/docs/commands/plan">`plan` — Preview the edit plan</a></li><li><a href="https://editor.praison.ai/docs/commands/probe">`probe` — Inspect media metadata</a></li><li><a href="https://editor.praison.ai/docs/commands/transcribe">`transcribe` — Audio/video to text</a></li><li><a href="https://editor.praison.ai/docs/demix">🎵 Stem Separation (Demix)</a></li><li><a href="https://editor.praison.ai/docs/demix/cache">Stem Cache</a></li><li><a href="https://editor.praison.ai/docs/demix/primary-zone">Primary Zone Detection (`--primary-zone`)</a></li><li><a href="https://editor.praison.ai/docs/detection">Content Detection Overview</a></li><li><a href="https://editor.praison.ai/docs/detection/ensemble">Ensemble detector (`--detector ensemble`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ffmpeg">FFmpeg heuristic detector (`--detector ffmpeg`)</a></li><li><a href="https://editor.praison.ai/docs/detection/ina">INA Speech Segmenter (`--detector ina`)</a></li><li><a href="https://editor.praison.ai/docs/detection/librosa">Librosa spectral detector (`--detector librosa`)</a></li><li><a href="https://editor.praison.ai/docs/presets">Presets Overview</a></li><li><a href="https://editor.praison.ai/docs/presets/clean">`clean` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/course">`course` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/meeting">`meeting` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/no_silence">`no_silence` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/podcast">`podcast` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/songs_only">`songs_only` preset</a></li><li><a href="https://editor.praison.ai/docs/presets/speech_only">`speech_only` preset</a></li><li><a href="https://editor.praison.ai/docs/protocols">Extending with Protocols</a></li><li><a href="https://editor.praison.ai/docs/protocols/editor">Custom Editor</a></li><li><a href="https://editor.praison.ai/docs/protocols/renderer">Custom Renderer</a></li><li><a href="https://editor.praison.ai/docs/protocols/transcriber">Custom Transcriber</a></li></ul></nav><h1>`transcribe` — Audio/video to text</h1>
+<p>Transcribe any audio or video file with word-level timestamps.</p>
+<h2>Usage</h2>
+<h2>Options</h2>
+<p>| Option | Short | Default | Description |</p>
+<p>|--------|-------|---------|-------------|</p>
+<p>| <code>INPUT</code> | | | Audio or video file |</p>
+<p>| <code>--output</code> | <code>-o</code> | stdout | Output file path |</p>
+<p>| <code>--format</code> | <code>-f</code> | <code>srt</code> | Output format: <code>srt</code>, <code>txt</code>, <code>json</code> |</p>
+<p>| <code>--local</code> | | False | Use offline faster-whisper |</p>
+<p>| <code>--language</code> | | auto | Language code e.g. <code>en</code>, <code>ta</code>, <code>es</code> |</p>
+<p>| <code>--speed</code> | | <code>1.0</code> | Speed before ASR (e.g. <code>2.0</code> halves API cost; timestamps scaled back) |</p>
+<h2>Examples</h2>
+<p>=== "SRT subtitles"</p>
+<p>=== "Plain text"</p>
+<p>=== "Text from existing JSON"</p>
+<p>If you already have a transcript JSON (from `<code>--format json</code>`), extract plain text without re-transcribing:</p>
+<p>=== "JSON with timestamps"</p>
+<p>=== "Tamil (non-English)"</p>
+<p>=== "Offline"</p>
+<h2>How it works</h2>
+<p>!!! info "Transcript cache"</p>
+<p>After transcribing, the result is cached at <code>~/.praisonai/editor/{file}/transcript.json</code>.</p>
+<p>Running <code>edit</code> on the same file loads from cache — <strong>no repeat API calls</strong>.</p>
+<p>!!! tip "Python API"</p></noscript></div><script type="application/json" id="aiui-initial-doc">{"url": "/docs/commands/transcribe.source.md", "text": "# `transcribe` — Audio/video to text\n\nTranscribe any audio or video file with word-level timestamps.\n\n## Usage\n\n```bash\npraisonai-editor transcribe INPUT [OPTIONS]\n```\n\n## Options\n\n| Option | Short | Default | Description |\n|--------|-------|---------|-------------|\n| `INPUT` | | | Audio or video file |\n| `--output` | `-o` | stdout | Output file path |\n| `--format` | `-f` | `srt` | Output format: `srt`, `txt`, `json` |\n| `--local` | | False | Use offline faster-whisper |\n| `--language` | | auto | Language code e.g. `en`, `ta`, `es` |\n| `--speed` | | `1.0` | Speed before ASR (e.g. `2.0` halves API cost; timestamps scaled back) |\n\n## Examples\n\n=== \"SRT subtitles\"\n\n    ```bash\n    praisonai-editor transcribe video.mp4 --format srt --output video.srt\n    ```\n\n    ```\n    1\n    00:00:00,000 --\u003e 00:00:03,240\n    Welcome everyone to today's session.\n\n    2\n    00:00:03,800 --\u003e 00:00:07,100\n    We'll be covering the main topics.\n    ```\n\n=== \"Plain text\"\n\n    ```bash\n    praisonai-editor transcribe podcast.mp3 --format txt\n    ```\n\n=== \"Text from existing JSON\"\n\n    If you already have a transcript JSON (from ``--format json``), extract plain text without re-transcribing:\n\n    ```bash\n    praisonai-editor extract-text words.json -o words.txt\n    # default output: words.txt (same stem as input)\n    praisonai-editor extract-text VCasP2Z2wQM_41m58_to_1h36m41.transcript.json\n    ```\n\n=== \"JSON with timestamps\"\n\n    ```bash\n    praisonai-editor transcribe audio.mp3 --format json --output words.json\n    ```\n\n    ```json\n    {\n      \"text\": \"Welcome everyone to today's session.\",\n      \"words\": [\n        {\"text\": \"Welcome\", \"start\": 0.0, \"end\": 0.52, \"confidence\": 0.99},\n        {\"text\": \"everyone\", \"start\": 0.58, \"end\": 1.10, \"confidence\": 0.99}\n      ],\n      \"language\": \"en\",\n      \"duration\": 1823.4\n    }\n    ```\n\n=== \"Tamil (non-English)\"\n\n    ```bash\n    praisonai-editor transcribe audio.mp3 --language ta\n    ```\n\n=== \"Offline\"\n\n    ```bash\n    pip install \"praisonai-editor[local]\"\n    praisonai-editor transcribe audio.mp3 --local\n    ```\n\n## How it works\n\n```mermaid\nflowchart LR\n    A[audio/video] --\u003e B[Extract MP3]\n    B --\u003e C{File \u003e 10 min?}\n    C --\u003e|Yes| D[Split into\\n10-min chunks]\n    C --\u003e|No| E[Single API call]\n    D --\u003e F[Whisper API\\n× N chunks]\n    E --\u003e F\n    F --\u003e G[Merge + offset\\ntimestamps]\n    G --\u003e H[SRT / TXT / JSON]\n```\n\n!!! info \"Transcript cache\"\n    After transcribing, the result is cached at `~/.praisonai/editor/{file}/transcript.json`.\n    Running `edit` on the same file loads from cache — **no repeat API calls**.\n\n!!! tip \"Python API\"\n    ```python\n    from praisonai_editor.transcribe import transcribe_audio\n\n    result = transcribe_audio(\"podcast.mp3\", language=\"en\")\n    print(result.text)       # full text\n    print(result.to_srt())   # SRT subtitles\n    for w in result.words:\n        print(w.start, w.text)\n    ```\n"}</script>
+  <script src="/plugins/plugin-loader.js?v=ac72173efc"></script>
+</body>
+
+</html>

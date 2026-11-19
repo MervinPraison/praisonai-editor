@@ -1,0 +1,20 @@
+:root {
+  --radius: 0.5rem;
+  --seed-tint: #71717a;
+  --seed-accent-light: #9333ea;
+  --seed-accent-dark: #a855f7;
+  --accent-mix: 4%;
+  --db-accent-rgb: 168,85,247;
+}
+:root {
+  --seed-pro-accent-light: #9333ea;
+  --seed-pro-accent-fg-light: #ffffff;
+  --seed-pro-soft-light: #9333ea14;
+  --seed-pro-link-light: #9333ea;
+  --seed-pro-ring-light: #9333ea;
+  --seed-pro-accent-dark: #a855f7;
+  --seed-pro-accent-fg-dark: #0e0e11;
+  --seed-pro-soft-dark: #a855f729;
+  --seed-pro-link-dark: #af64f6;
+  --seed-pro-ring-dark: #a855f7;
+}
