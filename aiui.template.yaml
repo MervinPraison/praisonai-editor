@@ -12,8 +12,9 @@ site:
   title: 🎙️ PraisonAI Editor
   ui: shadcn
   theme:
-    preset: purple
-    darkMode: true
+    preset: paper
+    radius: md
+    mode: system
   description: AI-powered audio & video editor — transcribe, clean, and edit media
     with one command
 seo:
