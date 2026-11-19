@@ -21,18 +21,14 @@ seo:
   siteUrl: https://editor.praison.ai
 navigation:
   tabs:
-  - tab: 🏠 Home
+  - tab: Docs
     groups:
-    - group: 🏠 Home
+    - group: Get started
       pages:
       - index
-  - tab: 🚀 Quick Start
-    groups:
-    - group: 🚀 Quick Start
-      pages:
       - quickstart
-  - tab: CLI Commands
-    groups:
+      - install
+      icon: rocket
     - group: CLI Commands
       pages:
       - commands/probe
@@ -40,9 +36,8 @@ navigation:
       - commands/transcribe
       - commands/plan
       - commands/edit
+      icon: terminal
       prefix: commands
-  - tab: 🎛️ Presets
-    groups:
     - group: 🎛️ Presets
       pages:
       - presets/index
@@ -53,9 +48,8 @@ navigation:
       - presets/songs_only
       - presets/speech_only
       - presets/no_silence
+      icon: book-open
       prefix: presets
-  - tab: 🔍 Content Detection
-    groups:
     - group: 🔍 Content Detection
       pages:
       - detection/index
@@ -63,24 +57,21 @@ navigation:
       - detection/ina
       - detection/librosa
       - detection/ffmpeg
+      icon: book-open
       prefix: detection
-  - tab: 🎵 Stem Separation (Demix)
-    groups:
     - group: 🎵 Stem Separation (Demix)
       pages:
       - demix/index
       - demix/cache
       - demix/primary-zone
+      icon: book-open
       prefix: demix
-  - tab: 🤖 AI Agent Editing
-    groups:
     - group: 🤖 AI Agent Editing
       pages:
       - agent/prompt-edit
       - agent/tools
+      icon: book-open
       prefix: agent
-  - tab: 🐍 Python API
-    groups:
     - group: 🐍 Python API
       pages:
       - api/index
@@ -88,28 +79,26 @@ navigation:
       - api/transcription
       - api/plans
       - api/models
+      icon: terminal
       prefix: api
-  - tab: 🔌 Extending (Protocols)
-    groups:
     - group: 🔌 Extending (Protocols)
       pages:
       - protocols/index
       - protocols/transcriber
       - protocols/editor
       - protocols/renderer
+      icon: book-open
       prefix: protocols
-  - tab: 📦 Artifacts & Cache
-    groups:
     - group: 📦 Artifacts & Cache
       pages:
       - artifacts/index
+      icon: book-open
       prefix: artifacts
-  - tab: ⚙️ Installation
-    groups:
-    - group: ⚙️ Installation
-      pages:
-      - install
 navbar:
+  primary:
+    type: button
+    label: Quick start
+    href: /docs/quickstart
   links:
   - label: GitHub
     href: https://github.com/MervinPraison/praisonai-editor
@@ -125,6 +114,8 @@ content:
     include:
     - '**/*.md'
     - '**/*.mdx'
+    nav:
+      mode: manual
 templates:
   docs:
     layout: ThreeColumnLayout
