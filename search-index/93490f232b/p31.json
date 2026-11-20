@@ -1,0 +1,1 @@
+["Every stage of the pipeline is defined as a Python Protocol — swap in your own implementation without touching core code.","","Pick the protocol you want to replace: Custom Transcriber — use your own speech-to-text engine Custom Editor — write your own editing logic Custom Renderer — use your own rendering engine"]

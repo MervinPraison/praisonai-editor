@@ -1,0 +1,1 @@
+["See what would be removed before actually editing the file.","","Option Short Default Description INPUT Media file to plan --output -o stdout Save plan as JSON --preset -p podcast Edit preset --local False Use local Whisper","Preview podcast plan Save plan to file","No file is modified plan only analyzes and outputs JSON — your file stays untouched."]

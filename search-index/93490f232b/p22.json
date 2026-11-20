@@ -1,0 +1,1 @@
+["Demucs stem separation is slow on CPU (5–15 min for a 40-min file). The stem cache ensures it only runs once per file.","","","Run Time First run (40-min file, CPU) ~10 min Second run (cache hit) ~8 sec","",""]

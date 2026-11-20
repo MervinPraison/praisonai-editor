@@ -1,0 +1,1 @@
+["Fastest detector. Uses FFmpeg's astats filter to get RMS/peak energy statistics per segment.","","","Very long files where speed matters Simple silence removal only (--preset no_silence) When you don't need precise speech/music classification Final step in a pipeline after rough cutting","Cannot distinguish speech from music No machine learning — accuracy is heuristic only"]

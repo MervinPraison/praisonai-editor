@@ -1,0 +1,1 @@
+["Extract only the singing/music portions from a recording. Removes speech, talking, and silence.","Music segments (instrumental sections) Singing segments (vocal melody) With --demix: only pure singing (vocals separated from instruments)","","","Install Demucs",""]

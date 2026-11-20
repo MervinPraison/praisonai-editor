@@ -1,7 +1,6 @@
 {
   "plugins": [
-    "fetch-retry",
     "nav-intercept"
   ],
-  "version": "ac72173efc"
+  "version": "18419fee02"
 }

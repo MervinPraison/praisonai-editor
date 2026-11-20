@@ -1,0 +1,1 @@
+["Convenience function. Automatically chooses OpenAI or local Whisper.","Automatically chunks audio > 10 minutes Skips chunks < 5,000 bytes (near-empty last chunk) 600-second timeout on the OpenAI client","Requires: pip install \"praisonai-editor[local]\" (faster-whisper)","",""]

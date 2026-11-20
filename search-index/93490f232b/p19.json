@@ -1,0 +1,1 @@
+["Uses spectral features (RMS energy, spectral centroid, zero-crossing rate) from librosa to classify segments.","","","No extra install (librosa is a base dependency after install) Fast — runs on CPU without ML inference Works fine for clean recordings","Less accurate than ensemble or INA on noisy or complex audio May confuse speech over music as pure music"]

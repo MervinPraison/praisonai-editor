@@ -1,0 +1,1 @@
+["Use probe to quickly check the metadata of any audio or video file.","","Option Description INPUT Path to media file (MP3, MP4, WAV, …) --output FILE Save result as JSON file --json Print full JSON to stdout","Basic Output: JSON output Save to file","Python API"]
