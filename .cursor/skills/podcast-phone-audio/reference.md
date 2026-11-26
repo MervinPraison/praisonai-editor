@@ -11,7 +11,51 @@ FP=~/miniconda3/bin/ffprobe
 
 Homebrew `/opt/homebrew/bin/ffprobe` may fail with missing `libx265` dylib.
 
-## Noise reduction
+## Noise QA (measure before denoise)
+
+Analyse background noise with per-window `astats` (RMS trough, noise floor) and
+`silencedetect`, then pick `afftdn` `nr`/`nf` automatically:
+
+```bash
+# Analyse only — prints level (clean/mild/moderate/heavy) + recommendation
+python3 -m praisonai_editor noise-qa INPUT --json
+
+# Apply recommended denoise (remuxes video with -c:v copy when present)
+python3 -m praisonai_editor noise-qa INPUT --apply -o OUTPUT
+
+# Full per-window report
+python3 -m praisonai_editor noise-qa INPUT --report /tmp/noise_qa.json
+```
+
+| Level | Typical noise floor | Action |
+|-------|---------------------|--------|
+| clean | ≤ −52 dB, SNR ≥ 28 dB | Skip denoise |
+| mild | −52 to −45 dB | `nr=10`, `nf` ≈ floor + 8 dB |
+| moderate | −45 to −35 dB | `nr=14`, `nf` ≈ floor + 5 dB, optional highpass 80 Hz |
+| heavy | > −35 dB or low SNR | `nr=20`, highpass 80 Hz |
+
+Best practice: **denoise before normalise** — loudnorm lifts the noise floor.
+
+### Mobile / environmental noise (constant room bed)
+
+Typical phone video: **0% silence**, noise floor **-35 to -40 dB**, default `afftdn nf=-50` **does nothing**.
+
+| Problem | Fix |
+|---------|-----|
+| `tn=1` with no silent gaps | Use **`tn=0`** (static profile) |
+| `nf=-50` vs actual floor -37 dB | Set **`nf` ≈ measured floor + 2 dB** |
+| NR=14 too weak | Use **double pass**: `nr=28` then `nr=10` + **highpass 120 Hz** |
+| Normalise after denoise | **Skips** if mean ≥ -22 dB — loudnorm lifts room noise |
+| Compressor makeup=2 | Use **makeup=1** — less noise lift |
+
+```bash
+python3 -m praisonai_editor noise-qa INPUT --json   # read noise_floor_db, silence_ratio
+# Pipeline auto-selects mobile path when silence_ratio < 5% and floor > -42 dB
+```
+
+**Prefer natural speech over silence:** heavy mobile denoise (`nr=28` double-pass) can sound **artificial/watery**. Default to standard NR=14 unless the user explicitly asks for stronger noise removal. When A/B testing, keep the lighter version if the heavy pass sounds processed.
+
+## Noise reduction (manual)
 
 | NR | When |
 |----|------|
@@ -45,8 +89,45 @@ Long single Whisper API calls on 600 s Tamil chunks block 20+ min with no output
 
 All work in `~/praisonai-audio-editor/`.
 
+## Crop-only mode
+
+For `.WAV` direct recordings (interface/recorder — no phone memo artefacts):
+
+```bash
+process_phone_podcast.sh "$SRC" "$STEM" "$START" "$END" --crop-only
+```
+
+Output: `{STEM}_FINAL.m4a` = cropped AAC at 192 kbps. No denoise/EQ/silence/normalise.
+
+### Optional normalise after crop-only
+
+Direct recordings are often quiet (e.g. mean −45 dB). Normalise for Spotify without denoise/EQ:
+
+```bash
+cd ~/praisonai-audio-editor
+python3 -m praisonai_editor normalize "${STEM}_cropped.m4a" -o "${STEM}_norm.m4a" --force
+ln -sf "$(pwd)/${STEM}_norm.m4a" "${STEM}_FINAL.m4a"
+```
+
+Target: −16 LUFS. Re-run transcribe only if normalised file replaces FINAL before upload.
+
+## Full pipeline (SDK)
+
+When the user says **full pipeline**, run audio steps **and** biblerevelation publish (Phases 5–11).
+
+```bash
+# List all phases (audio → article → Spotify notes)
+python3 -m praisonai_editor full-pipeline --describe
+
+# Check which artefacts exist for a stem
+python3 -m praisonai_editor full-pipeline bf4fbafd_message --json
+```
+
+Implementation: `praisonai_editor/full_pipeline.py`  
+Article phases: `~/.cursor/skills/biblerevelation-sermon-articles/pipeline.md`
+
 ## Related skills
 
 - [sermon-transcribe](../sermon-transcribe/SKILL.md) — general local audio (no phone denoise/EQ)
 - [youtube-clip-transcribe](../youtube-clip-transcribe/SKILL.md) — YouTube download + crop
-- `~/.cursor/skills/biblerevelation-sermon-articles/` — article pipeline (separate request)
+- `~/.cursor/skills/biblerevelation-sermon-articles/` — article pipeline (**required for full pipeline**)

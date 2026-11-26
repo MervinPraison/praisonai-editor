@@ -24,6 +24,8 @@ Usage:
     praisonai-editor session end <session-id>
     praisonai-editor session prune --max-age-seconds 604800
     praisonai-editor apply plan.yaml
+    praisonai-editor full-pipeline --describe
+    praisonai-editor full-pipeline validate STEM
 """
 
 import argparse
@@ -297,6 +299,60 @@ def main():
     denoise_parser.add_argument("--bitrate", "-b", default="192k", help="AAC bitrate")
     denoise_parser.add_argument("--verbose", "-v", action="store_true")
     denoise_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    # --- noise-qa ---
+    noise_qa_parser = subparsers.add_parser(
+        "noise-qa",
+        help="Measure background noise and optionally apply afftdn denoise",
+    )
+    noise_qa_parser.add_argument("input", help="Input audio or video file")
+    noise_qa_parser.add_argument(
+        "--output", "-o", help="Output file when applying denoise (default: {stem}_denoised…)"
+    )
+    noise_qa_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply recommended denoise (remuxes video with -c:v copy when present)",
+    )
+    noise_qa_parser.add_argument(
+        "--force-denoise",
+        action="store_true",
+        help="Denoise even when QA says clean",
+    )
+    noise_qa_parser.add_argument(
+        "--skip-denoise",
+        action="store_true",
+        help="Analyse only — never write denoised output",
+    )
+    noise_qa_parser.add_argument(
+        "--report",
+        metavar="PATH",
+        help="Write full JSON report (includes per-window stats)",
+    )
+    noise_qa_parser.add_argument("--verbose", "-v", action="store_true")
+    noise_qa_parser.add_argument("--json", action="store_true", help="Print result as JSON")
+
+    # --- full-pipeline ---
+    fp_parser = subparsers.add_parser(
+        "full-pipeline",
+        help="Full pipeline phases (audio → transcript → biblerevelation.org publish)",
+    )
+    fp_parser.add_argument(
+        "stem",
+        nargs="?",
+        help="Stem to validate artefacts for (e.g. bf4fbafd_message)",
+    )
+    fp_parser.add_argument(
+        "--describe",
+        action="store_true",
+        help="Print all phases run when user says 'full pipeline'",
+    )
+    fp_parser.add_argument(
+        "--post-spotify",
+        action="store_true",
+        help="Include post-Spotify RSS sync phases in --describe output",
+    )
+    fp_parser.add_argument("--json", action="store_true", help="Print result as JSON")
 
     # --- word-gaps ---
     gaps_parser = subparsers.add_parser(
@@ -934,6 +990,10 @@ def main():
             return cmd_master(args)
         elif args.command == "denoise":
             return cmd_denoise(args)
+        elif args.command == "noise-qa":
+            return cmd_noise_qa(args)
+        elif args.command == "full-pipeline":
+            return cmd_full_pipeline(args)
         elif args.command == "word-gaps":
             return cmd_word_gaps(args)
         elif args.command == "transcribe":
@@ -1209,6 +1269,67 @@ def cmd_denoise(args):
         print(json.dumps(result.to_dict(), indent=2))
     else:
         print(f"✓ Denoised → {result.output_path}")
+    return 0
+
+
+def cmd_full_pipeline(args):
+    from .full_pipeline import describe_full_pipeline, validate_stem
+
+    if args.describe or not args.stem:
+        text = describe_full_pipeline(include_post_spotify=args.post_spotify)
+        if args.json:
+            from .full_pipeline import FULL_PIPELINE, POST_SPOTIFY
+
+            payload = {
+                "phases": [p.__dict__ for p in FULL_PIPELINE],
+                "post_spotify": [p.__dict__ for p in POST_SPOTIFY],
+            }
+            print(json.dumps(payload, indent=2))
+        else:
+            print(text)
+        return 0
+
+    result = validate_stem(args.stem)
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        print(f"Pipeline validation for stem: {result.stem}")
+        for p in result.phases:
+            mark = "✓" if p["ok"] else "✗"
+            print(f"  {mark} [{p['phase']}] {p['check']}: {p['path']}")
+        print(f"Complete: {'yes' if result.complete else 'no'}")
+    return 0
+
+
+def cmd_noise_qa(args):
+    from .noise_qa import analyse_noise, apply_noise_qa, write_report_json
+
+    if args.apply:
+        report, out_path = apply_noise_qa(
+            args.input,
+            args.output,
+            force_denoise=args.force_denoise,
+            skip_denoise=args.skip_denoise,
+            verbose=args.verbose,
+        )
+    else:
+        report = analyse_noise(args.input)
+        out_path = None
+
+    if args.report:
+        write_report_json(report, args.report)
+
+    payload = report.to_dict()
+    payload["output_path"] = out_path
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(report.summary())
+        if out_path:
+            print(f"✓ Output → {out_path}")
+        if args.report:
+            print(f"✓ Report → {args.report}")
     return 0
 
 

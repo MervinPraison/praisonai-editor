@@ -33,6 +33,25 @@ def _build_denoise_filter(noise_reduction: float, noise_floor: float, track_nois
     return f"afftdn=nr={noise_reduction:g}:nf={noise_floor:g}:tn={tn}"
 
 
+def build_mobile_env_filter(
+    noise_floor_db: float,
+    *,
+    highpass_hz: int = 120,
+) -> str:
+    """Filter chain for mobile recordings with constant room noise and no silent gaps.
+
+    Uses static ``afftdn`` (``tn=0``) with ``nf`` matched to the measured floor —
+    the default ``nf=-50`` misses env noise that sits around -35 to -40 dBFS.
+    """
+    nf1 = max(-80.0, min(-20.0, noise_floor_db + 2.0))
+    nf2 = max(-80.0, min(-20.0, noise_floor_db - 10.0))
+    return (
+        f"highpass=f={highpass_hz},"
+        f"afftdn=nr=28:nf={nf1:g}:tn=0,"
+        f"afftdn=nr=10:nf={nf2:g}:tn=0"
+    )
+
+
 def denoise_audio(
     input_path: str,
     output_path: str | None = None,
@@ -110,5 +129,53 @@ def denoise_audio(
             "noise_reduction": str(noise_reduction),
             "noise_floor": str(noise_floor),
             "track_noise": str(track_noise),
+        },
+    )
+
+
+def denoise_mobile_env(
+    input_path: str,
+    output_path: str | None = None,
+    *,
+    noise_floor_db: float = -37.0,
+    highpass_hz: int = 120,
+    bitrate: str = "192k",
+    verbose: bool = False,
+) -> EditResult:
+    """Denoise mobile/ambient recordings with continuous speech (no silent gaps)."""
+    src = Path(input_path)
+    if not src.exists():
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    out = Path(output_path) if output_path else src.parent / f"{src.stem}_denoised.m4a"
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    ffmpeg = _find_ffmpeg()
+    af = build_mobile_env_filter(noise_floor_db, highpass_hz=highpass_hz)
+    cmd = [
+        ffmpeg, "-y", "-nostdin",
+        "-i", str(src),
+        "-af", af,
+        "-c:a", "aac",
+        "-b:a", bitrate,
+        str(out),
+    ]
+
+    if verbose:
+        result = subprocess.run(cmd)
+    else:
+        result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        stderr = result.stderr.decode() if getattr(result, "stderr", None) else ""
+        raise RuntimeError(f"FFmpeg mobile denoise failed: {stderr[-800:]}")
+
+    return EditResult(
+        input_path=str(src),
+        output_path=str(out),
+        success=True,
+        artifacts={
+            "filter": af,
+            "mode": "mobile_env",
+            "noise_floor_db": str(noise_floor_db),
         },
     )

@@ -230,8 +230,9 @@ Report to user:
 - `{stem}_FINAL.transcript.txt` — plain text
 - Volume before/after, duration, % silence removed
 
-If user asked for **article**: run biblerevelation skill on `.transcript.txt`.  
-If user asked for **Spotify metadata**: title + description (no preacher names).
+If user asked for **full pipeline** or **article**: run the complete biblerevelation workflow on `.transcript.txt` — inventory → HTML → audit → images → publish → Spotify notes. See [biblerevelation-sermon-articles](~/.cursor/skills/biblerevelation-sermon-articles/pipeline.md) and `python3 -m praisonai_editor full-pipeline --describe`.
+
+If user asked for **Spotify metadata only** (not full pipeline): title + description (no preacher names).
 
 ---
 
